@@ -27,7 +27,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. All four move types (MoveL, MoveJ, MoveC, MoveAbsJ) are parsed from a test .mod file with correct robtarget extraction
   3. Multiline robtarget declarations (split across lines with semicolon termination) parse correctly without data loss
   4. Each parsed move instruction carries its source line number, enabling downstream code linking
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Project skeleton, data model contracts, regex patterns, test infrastructure
+- [ ] 01-02-PLAN.md — RAPID parser implementation (TDD: tokenizer, two-pass parser, all move types)
+- [ ] 01-03-PLAN.md — PyQt6 MainWindow with file dialog and title bar update
 
 ### Phase 2: 3D Viewer and Camera
 **Goal**: User sees the parsed toolpath rendered in 3D with move-type visual distinction, waypoint markers, and can freely navigate the view with mouse controls
@@ -64,6 +69,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Parser and File Loading | 0/0 | Not started | - |
+| 1. Parser and File Loading | 0/3 | Planning complete | - |
 | 2. 3D Viewer and Camera | 0/0 | Not started | - |
 | 3. Playback, Code Panel, and Linking | 0/0 | Not started | - |
