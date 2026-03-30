@@ -24,9 +24,9 @@ decisions:
 metrics:
   duration: "5 minutes"
   completed: "2026-03-30"
-  tasks_completed: 2
+  tasks_completed: 3
   tasks_total: 3
-  status: "checkpoint:human-verify"
+  status: "complete"
 ---
 
 # Quick Task 260330-nz9: PyInstaller Windows Build Summary
@@ -39,7 +39,7 @@ metrics:
 |---|------|--------|--------|
 | 1 | Add pyinstaller>=6.0 to dev deps | 5aa8a8e | pyinstaller 6.19.0 installed |
 | 2 | Write rapid_viewer.spec + build.bat, run PyInstaller | 41d050b | dist/rapid_viewer.exe (73MB) created |
-| 3 | human-verify checkpoint | — | AWAITING |
+| 3 | human-verify checkpoint | — | APPROVED — EXE 실행 정상, 파일 열기 정상 |
 
 ## Build Output
 
