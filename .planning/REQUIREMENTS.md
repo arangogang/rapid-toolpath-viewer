@@ -1,0 +1,106 @@
+# Requirements: ABB RAPID Toolpath Viewer
+
+**Defined:** 2026-03-30
+**Core Value:** .mod 파일을 열면 즉시 3D 툴패스가 렌더링되고, 각 워크포인트를 클릭하면 해당 RAPID 코드 줄로 이동할 수 있어야 한다.
+
+## v1 Requirements
+
+### File Loading
+
+- [ ] **FILE-01**: 사용자가 파일 다이얼로그를 통해 .mod 파일을 열 수 있다
+- [ ] **FILE-02**: 파일 로드 후 파일명이 상단 타이틀바에 표시된다
+
+### RAPID Parsing
+
+- [ ] **PARS-01**: MoveL 명령어를 파싱하여 선형 이동 경로를 추출한다
+- [ ] **PARS-02**: MoveJ 명령어를 파싱하여 조인트 이동 경로를 추출한다
+- [ ] **PARS-03**: MoveC 명령어를 파싱하여 원호 이동 경로를 추출한다 (CirPoint + endpoint)
+- [ ] **PARS-04**: MoveAbsJ는 파싱하되 3D 렌더링에서 제외한다 (코드 패널에는 표시)
+- [ ] **PARS-05**: robtarget 데이터 타입을 파싱한다 (pos x/y/z + orient q1-q4)
+- [ ] **PARS-06**: 멀티라인 robtarget 선언을 올바르게 파싱한다 (세미콜론 기반 토크나이징)
+- [ ] **PARS-07**: 파싱 시 각 Move 명령어에 소스 줄 번호를 저장한다 (코드 링크용)
+- [ ] **PARS-08**: 여러 PROC가 있는 .mod 파일에서 표시할 PROC을 선택할 수 있다
+
+### 3D Rendering
+
+- [ ] **REND-01**: 툴패스 경로를 3D로 렌더링한다 (MoveL=실선, MoveJ=점선, MoveC=호선)
+- [ ] **REND-02**: 각 워크포인트(robtarget)에 마커를 표시한다
+- [ ] **REND-03**: XYZ 좌표축 인디케이터를 뷰포트 코너에 표시한다
+- [ ] **REND-04**: 각 워크포인트에 TCP 방향을 RGB 축 트라이어드로 시각화한다 (쿼터니언 → 회전행렬 변환)
+- [ ] **REND-05**: OpenGL 3.3 Core Profile + VBO/VAO 아키텍처를 사용한다
+
+### Camera Controls
+
+- [ ] **CAM-01**: 마우스 드래그로 3D 뷰를 오비트(회전)할 수 있다
+- [ ] **CAM-02**: 마우스 스크롤로 줌 인/아웃할 수 있다
+- [ ] **CAM-03**: 마우스 중클릭 드래그로 팬(이동)할 수 있다
+
+### Step Playback
+
+- [ ] **PLAY-01**: Step 앞으로 버튼으로 다음 워크포인트로 이동한다
+- [ ] **PLAY-02**: Step 뒤로 버튼으로 이전 워크포인트로 이동한다
+- [ ] **PLAY-03**: Play 버튼으로 자동 재생한다 (워크포인트를 순서대로 이동)
+- [ ] **PLAY-04**: 현재 선택된 워크포인트가 3D 뷰어에서 시각적으로 강조된다
+- [ ] **PLAY-05**: 현재 재생 위치가 "포인트 N / 전체 M" 형식으로 표시된다
+
+### Code Panel
+
+- [ ] **CODE-01**: RAPID 코드가 우측 패널에 표시된다
+- [ ] **CODE-02**: RAPID 키워드가 신택스 하이라이트된다 (MoveL, MoveJ, PROC 등)
+- [ ] **CODE-03**: 현재 선택된 워크포인트에 해당하는 코드 줄이 하이라이트된다
+
+### Bidirectional Code-to-3D Linking
+
+- [ ] **LINK-01**: 3D 뷰어에서 워크포인트를 클릭하면 코드 패널이 해당 줄로 스크롤된다
+- [ ] **LINK-02**: 코드 패널에서 Move 명령어 줄을 클릭하면 3D 뷰어에서 해당 포인트가 선택된다
+
+## v2 Requirements
+
+### Playback Enhancement
+
+- **ENH-01**: 속도 조절 슬라이더가 있는 애니메이션 재생 (경로를 따라 마커 이동)
+- **ENH-02**: 속도(speeddata) / 존(zonedata) 데이터 오버레이 (경로 색상 그라디언트)
+
+### Path Analysis
+
+- **ANAL-01**: 경로 통계 패널 (총 길이, 포인트 수, 이동 타입 분류)
+- **ANAL-02**: 코드 패널 텍스트 검색
+
+### Extended Parsing
+
+- **EXT-01**: wobj (work object) 좌표계 파싱 및 변환 시각화
+- **EXT-02**: 여러 .mod 파일을 하나의 뷰어에 로드 (멀티 모듈)
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| ABB 로봇 암 3D 모델 | 키네마틱 솔버 + 로봇 모델 필요, 코드 검증 목적에 불필요 |
+| RAPID 코드 편집 | 뷰어 전용 — IDE 기능 제외 |
+| 충돌 감지 / 도달 가능성 분석 | RobotStudio 수준의 복잡도 |
+| 실시간 로봇 연결 (EGM) | 완전히 다른 제품 카테고리 |
+| .pgf 프로젝트 파일 파싱 | 멀티 모듈/시스템 구조 복잡도 |
+| CAD 모델 임포트 (STEP/IGES) | 별도 파싱 라이브러리 필요, v2+ 고려 |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| FILE-01, FILE-02 | Phase 1 | Pending |
+| PARS-01~07 | Phase 1 | Pending |
+| REND-01~05 | Phase 2 | Pending |
+| CAM-01~03 | Phase 2 | Pending |
+| PLAY-01~05 | Phase 3 | Pending |
+| CODE-01~03 | Phase 3 | Pending |
+| LINK-01~02 | Phase 3 | Pending |
+| PARS-08 | Phase 3 | Pending |
+| REND-04 | Phase 3 | Pending |
+
+**Coverage:**
+- v1 requirements: 27 total
+- Mapped to phases: 27
+- Unmapped: 0 ✓
+
+---
+*Requirements defined: 2026-03-30*
+*Last updated: 2026-03-30 after initial definition*
