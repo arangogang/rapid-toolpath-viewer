@@ -3,14 +3,26 @@
 Provides the QMainWindow with:
   - File > Open menu action (Ctrl+O) to load .mod files via native dialog
   - File > Exit menu action (Ctrl+Q) to close the application
-  - Title bar update with filename after a successful load
-  - Internal storage of ParseResult for downstream phase consumption
+  - QSplitter layout: GL widget (60%) left, CodePanel (40%) right
+  - PlaybackToolbar at bottom with PROC selector QComboBox
+  - Bidirectional linking: 3D click <-> code panel scroll
+  - PlaybackState wiring for step-through navigation
 """
 
+from __future__ import annotations
+
+from dataclasses import replace
 from pathlib import Path
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QFileDialog, QMainWindow, QMessageBox
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QSplitter,
+)
 
 APP_TITLE = "ABB RAPID Toolpath Viewer"
 
@@ -21,9 +33,43 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_TITLE)
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(1024, 700)
         self._parse_result = None
         self._setup_menu()
+
+        # Lazy imports (isolate OpenGL from parser-only tests)
+        from rapid_viewer.renderer.toolpath_gl_widget import ToolpathGLWidget
+        from rapid_viewer.ui.code_panel import CodePanel
+        from rapid_viewer.ui.playback_state import PlaybackState
+        from rapid_viewer.ui.playback_toolbar import PlaybackToolbar
+
+        # Core state
+        self._playback_state = PlaybackState(self)
+
+        # Widgets
+        self._gl_widget = ToolpathGLWidget(self)
+        self._code_panel = CodePanel(self)
+
+        # QSplitter: 3D view (60%) | code panel (40%)
+        splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        splitter.addWidget(self._gl_widget)
+        splitter.addWidget(self._code_panel)
+        splitter.setSizes([700, 300])
+        self.setCentralWidget(splitter)
+
+        # Playback toolbar at bottom
+        self._toolbar = PlaybackToolbar(self._playback_state, self)
+        self.addToolBar(Qt.ToolBarArea.BottomToolBarArea, self._toolbar)
+
+        # PROC selector QComboBox in toolbar
+        self._proc_combo = QComboBox(self)
+        self._proc_combo.addItem("All PROCs")
+        self._proc_combo.currentTextChanged.connect(self._on_proc_changed)
+        self._toolbar.addSeparator()
+        self._toolbar.addWidget(self._proc_combo)
+
+        # Wire signals
+        self._wire_signals()
 
     def _setup_menu(self) -> None:
         """Build the menu bar with File menu entries."""
@@ -41,6 +87,78 @@ class MainWindow(QMainWindow):
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+
+    def _wire_signals(self) -> None:
+        """Connect signals for bidirectional 3D-to-code linking."""
+        # 3D click -> select waypoint in PlaybackState
+        self._gl_widget.waypoint_clicked.connect(self._playback_state.set_index)
+
+        # Current waypoint changed -> update 3D highlight + code panel
+        self._playback_state.current_changed.connect(self._on_waypoint_changed)
+
+        # Code panel click -> find matching move -> select in 3D
+        self._code_panel.line_clicked.connect(self._on_code_line_clicked)
+
+    # -- Slots ---------------------------------------------------------------
+
+    def _gl_ready(self) -> bool:
+        """Check whether the GL widget has a valid OpenGL context.
+
+        Returns False if the widget hasn't been shown yet (no context created),
+        which prevents makeCurrent() from hanging in tests.
+        """
+        ctx = self._gl_widget.context()
+        return ctx is not None and ctx.isValid()
+
+    def _on_waypoint_changed(self, index: int) -> None:
+        """Update GL highlight and code panel when the current waypoint changes."""
+        if self._gl_ready():
+            self._gl_widget.set_highlight_index(index)
+        move = self._playback_state.current_move
+        if move is not None:
+            self._code_panel.highlight_line(move.source_line)
+
+    def _on_code_line_clicked(self, line: int) -> None:
+        """Find a move matching the clicked source line and select it."""
+        for i, move in enumerate(self._playback_state._moves):
+            if move.source_line == line:
+                self._playback_state.set_index(i)
+                return
+
+    def _on_proc_changed(self, proc_name: str) -> None:
+        """Filter moves by selected PROC and update state + geometry."""
+        if self._parse_result is None:
+            return
+        self._apply_proc_filter(proc_name)
+
+    def _apply_proc_filter(self, proc_name: str) -> None:
+        """Filter moves by PROC name and update PlaybackState + GL widget."""
+        if self._parse_result is None:
+            return
+
+        all_moves = self._parse_result.moves
+
+        if proc_name == "All PROCs":
+            filtered_moves = all_moves
+        else:
+            proc_range = self._parse_result.proc_ranges.get(proc_name)
+            if proc_range is None:
+                filtered_moves = all_moves
+            else:
+                start_line, end_line = proc_range
+                filtered_moves = [
+                    m for m in all_moves
+                    if start_line <= m.source_line <= end_line
+                ]
+
+        self._playback_state.set_moves(filtered_moves)
+
+        # Create a filtered ParseResult copy and update GL scene
+        if self._gl_ready():
+            filtered_result = replace(self._parse_result, moves=filtered_moves)
+            self._gl_widget.update_scene(filtered_result)
+
+    # -- File loading --------------------------------------------------------
 
     def _open_file(self) -> None:
         """Open a native file dialog and load the selected .mod file."""
@@ -71,6 +189,24 @@ class MainWindow(QMainWindow):
             source = read_mod_file(path)
             self._parse_result = parse_module(source)
             self.setWindowTitle(f"{APP_TITLE} - {path.name}")
+
+            # Populate code panel with source text
+            self._code_panel.set_source(self._parse_result.source_text)
+
+            # Update PROC combo box
+            self._proc_combo.blockSignals(True)
+            self._proc_combo.clear()
+            self._proc_combo.addItem("All PROCs")
+            for proc in self._parse_result.procedures:
+                self._proc_combo.addItem(proc)
+            self._proc_combo.blockSignals(False)
+
+            # Set moves in PlaybackState
+            self._playback_state.set_moves(self._parse_result.moves)
+
+            # Update GL scene (skip if context not yet initialized)
+            if self._gl_ready():
+                self._gl_widget.update_scene(self._parse_result)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "Error", f"Failed to load file:\n{e}")
 
