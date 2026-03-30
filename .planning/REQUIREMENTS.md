@@ -26,7 +26,7 @@
 - [x] **REND-01**: 툴패스 경로를 3D로 렌더링한다 (MoveL=실선, MoveJ=점선, MoveC=호선)
 - [x] **REND-02**: 각 워크포인트(robtarget)에 마커를 표시한다
 - [x] **REND-03**: XYZ 좌표축 인디케이터를 뷰포트 코너에 표시한다
-- [ ] **REND-04**: 각 워크포인트에 TCP 방향을 RGB 축 트라이어드로 시각화한다 (쿼터니언 → 회전행렬 변환)
+- [x] **REND-04**: 각 워크포인트에 TCP 방향을 RGB 축 트라이어드로 시각화한다 (쿼터니언 → 회전행렬 변환)
 - [x] **REND-05**: OpenGL 3.3 Core Profile + VBO/VAO 아키텍처를 사용한다
 
 ### Camera Controls
@@ -40,10 +40,10 @@
 - [ ] **PLAY-01**: Step 앞으로 버튼으로 다음 워크포인트로 이동한다
 - [ ] **PLAY-02**: Step 뒤로 버튼으로 이전 워크포인트로 이동한다
 - [ ] **PLAY-03**: Play 버튼으로 자동 재생한다 (워크포인트를 순서대로 이동)
-- [ ] **PLAY-04**: 현재 선택된 워크포인트가 3D 뷰어에서 시각적으로 강조된다
-- [ ] **PLAY-05**: 현재 재생 위치가 "포인트 N / 전체 M" 형식으로 표시된다
-- [ ] **PLAY-06**: 재생 속도 슬라이더 (0.5x ~ 10x)로 자동 재생 속도를 조절할 수 있다
-- [ ] **PLAY-07**: 스크러버 슬라이더로 전체 경로에서 임의 위치로 즉시 이동할 수 있다
+- [x] **PLAY-04**: 현재 선택된 워크포인트가 3D 뷰어에서 시각적으로 강조된다
+- [x] **PLAY-05**: 현재 재생 위치가 "포인트 N / 전체 M" 형식으로 표시된다
+- [x] **PLAY-06**: 재생 속도 슬라이더 (0.5x ~ 10x)로 자동 재생 속도를 조절할 수 있다
+- [x] **PLAY-07**: 스크러버 슬라이더로 전체 경로에서 임의 위치로 즉시 이동할 수 있다
 
 ### Code Panel
 
@@ -53,7 +53,7 @@
 
 ### Bidirectional Code-to-3D Linking
 
-- [ ] **LINK-01**: 3D 뷰어에서 워크포인트를 클릭하면 코드 패널이 해당 줄로 스크롤된다
+- [x] **LINK-01**: 3D 뷰어에서 워크포인트를 클릭하면 코드 패널이 해당 줄로 스크롤된다
 - [ ] **LINK-02**: 코드 패널에서 Move 명령어 줄을 클릭하면 3D 뷰어에서 해당 포인트가 선택된다
 
 ## v2 Requirements
@@ -101,7 +101,7 @@
 | REND-01 | Phase 2 | Complete |
 | REND-02 | Phase 2 | Complete |
 | REND-03 | Phase 2 | Complete |
-| REND-04 | Phase 3 | Pending |
+| REND-04 | Phase 3 | Complete |
 | REND-05 | Phase 2 | Complete |
 | CAM-01 | Phase 2 | Complete |
 | CAM-02 | Phase 2 | Complete |
@@ -109,14 +109,14 @@
 | PLAY-01 | Phase 3 | Pending |
 | PLAY-02 | Phase 3 | Pending |
 | PLAY-03 | Phase 3 | Pending |
-| PLAY-06 | Phase 3 | Pending |
-| PLAY-07 | Phase 3 | Pending |
-| PLAY-04 | Phase 3 | Pending |
-| PLAY-05 | Phase 3 | Pending |
+| PLAY-06 | Phase 3 | Complete |
+| PLAY-07 | Phase 3 | Complete |
+| PLAY-04 | Phase 3 | Complete |
+| PLAY-05 | Phase 3 | Complete |
 | CODE-01 | Phase 3 | Complete |
 | CODE-02 | Phase 3 | Complete |
 | CODE-03 | Phase 3 | Complete |
-| LINK-01 | Phase 3 | Pending |
+| LINK-01 | Phase 3 | Complete |
 | LINK-02 | Phase 3 | Pending |
 
 **Coverage:**
