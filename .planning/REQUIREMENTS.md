@@ -7,8 +7,8 @@
 
 ### File Loading
 
-- [ ] **FILE-01**: 사용자가 파일 다이얼로그를 통해 .mod 파일을 열 수 있다
-- [ ] **FILE-02**: 파일 로드 후 파일명이 상단 타이틀바에 표시된다
+- [x] **FILE-01**: 사용자가 파일 다이얼로그를 통해 .mod 파일을 열 수 있다
+- [x] **FILE-02**: 파일 로드 후 파일명이 상단 타이틀바에 표시된다
 
 ### RAPID Parsing
 
@@ -88,8 +88,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FILE-01 | Phase 1 | Pending |
-| FILE-02 | Phase 1 | Pending |
+| FILE-01 | Phase 1 | Complete |
+| FILE-02 | Phase 1 | Complete |
 | PARS-01 | Phase 1 | Complete |
 | PARS-02 | Phase 1 | Complete |
 | PARS-03 | Phase 1 | Complete |
