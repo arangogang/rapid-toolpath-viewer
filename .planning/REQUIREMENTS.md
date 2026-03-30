@@ -86,21 +86,40 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FILE-01, FILE-02 | Phase 1 | Pending |
-| PARS-01~07 | Phase 1 | Pending |
-| REND-01~05 | Phase 2 | Pending |
-| CAM-01~03 | Phase 2 | Pending |
-| PLAY-01~05 | Phase 3 | Pending |
-| CODE-01~03 | Phase 3 | Pending |
-| LINK-01~02 | Phase 3 | Pending |
+| FILE-01 | Phase 1 | Pending |
+| FILE-02 | Phase 1 | Pending |
+| PARS-01 | Phase 1 | Pending |
+| PARS-02 | Phase 1 | Pending |
+| PARS-03 | Phase 1 | Pending |
+| PARS-04 | Phase 1 | Pending |
+| PARS-05 | Phase 1 | Pending |
+| PARS-06 | Phase 1 | Pending |
+| PARS-07 | Phase 1 | Pending |
 | PARS-08 | Phase 3 | Pending |
+| REND-01 | Phase 2 | Pending |
+| REND-02 | Phase 2 | Pending |
+| REND-03 | Phase 2 | Pending |
 | REND-04 | Phase 3 | Pending |
+| REND-05 | Phase 2 | Pending |
+| CAM-01 | Phase 2 | Pending |
+| CAM-02 | Phase 2 | Pending |
+| CAM-03 | Phase 2 | Pending |
+| PLAY-01 | Phase 3 | Pending |
+| PLAY-02 | Phase 3 | Pending |
+| PLAY-03 | Phase 3 | Pending |
+| PLAY-04 | Phase 3 | Pending |
+| PLAY-05 | Phase 3 | Pending |
+| CODE-01 | Phase 3 | Pending |
+| CODE-02 | Phase 3 | Pending |
+| CODE-03 | Phase 3 | Pending |
+| LINK-01 | Phase 3 | Pending |
+| LINK-02 | Phase 3 | Pending |
 
 **Coverage:**
-- v1 requirements: 27 total
-- Mapped to phases: 27
-- Unmapped: 0 ✓
+- v1 requirements: 28 total
+- Mapped to phases: 28
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-03-30 after initial definition*
+*Last updated: 2026-03-30 after roadmap creation*
