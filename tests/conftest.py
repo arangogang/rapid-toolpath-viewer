@@ -40,3 +40,9 @@ def moveabsj_mod() -> str:
 def offs_mod() -> str:
     """Return content of offs_inline.mod (Offs() inline expressions)."""
     return (FIXTURES_DIR / "offs_inline.mod").read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def multiproc_mod() -> str:
+    """Return content of multiproc.mod (multiple PROCs for PARS-08 testing)."""
+    return (FIXTURES_DIR / "multiproc.mod").read_text(encoding="utf-8")

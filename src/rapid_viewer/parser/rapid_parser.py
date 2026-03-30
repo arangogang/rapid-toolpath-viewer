@@ -19,6 +19,7 @@ import numpy as np
 
 from rapid_viewer.parser.patterns import (
     RE_BRACKET_GROUP,
+    RE_ENDPROC,
     RE_JOINTTARGET_DECL,
     RE_MODULE,
     RE_MOVEC,
@@ -69,11 +70,29 @@ def read_mod_file(path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _is_structural_keyword(line_stripped: str) -> bool:
+    """Check if a stripped line is a RAPID structural keyword (no semicolon).
+
+    PROC, ENDPROC, MODULE, ENDMODULE are block boundaries that never
+    have semicolons. They must be treated as implicit statement boundaries
+    so that the tokenizer does not merge them with adjacent statements.
+    """
+    upper = line_stripped.upper()
+    return (
+        upper.startswith("PROC ")
+        or upper == "ENDPROC"
+        or upper.startswith("MODULE ")
+        or upper == "ENDMODULE"
+    )
+
+
 def tokenize_statements(source: str) -> list[tuple[str, int]]:
     """Split RAPID source into (statement_text, start_line_number) tuples.
 
     Statements in RAPID are delimited by semicolons. This tokenizer:
       - Strips line comments (everything after '!' on a line).
+      - Treats PROC/ENDPROC/MODULE/ENDMODULE as implicit statement boundaries
+        (these structural keywords never have semicolons in RAPID).
       - Accumulates content across multiple lines until a ';' is found.
       - Tracks the line number where each statement's first non-empty content
         appeared (the line number a user would expect to see highlighted).
@@ -93,6 +112,20 @@ def tokenize_statements(source: str) -> list[tuple[str, int]]:
     for line_num, line in enumerate(source.splitlines(), start=1):
         # Strip RAPID line comment: '!' terminates meaningful content
         code = line.split("!", 1)[0]
+        code_stripped = code.strip()
+
+        # Structural keywords (PROC, ENDPROC, MODULE, ENDMODULE) are implicit
+        # statement boundaries -- flush any accumulated content first, then
+        # emit the keyword as its own statement.
+        if _is_structural_keyword(code_stripped):
+            if current_parts:
+                full_stmt = " ".join(p for p in current_parts if p).strip()
+                if full_stmt:
+                    statements.append((full_stmt, start_line))
+                current_parts = []
+            statements.append((code_stripped, line_num))
+            start_line = line_num + 1
+            continue
 
         # Split on ';' to detect statement boundaries
         parts = code.split(";")
@@ -428,6 +461,17 @@ def parse_module(source: str) -> ParseResult:
     # Extract procedure names from raw source
     procedures: list[str] = [m.group(1) for m in RE_PROC.finditer(source)]
 
+    # Extract PROC line ranges: PROC name -> (start_line, end_line)
+    proc_ranges: dict[str, tuple[int, int]] = {}
+    proc_stack: list[tuple[str, int]] = []
+    for line_num, line in enumerate(source.splitlines(), start=1):
+        m = RE_PROC.search(line)
+        if m:
+            proc_stack.append((m.group(1), line_num))
+        if RE_ENDPROC.search(line) and proc_stack:
+            name, start = proc_stack.pop()
+            proc_ranges[name] = (start, line_num)
+
     # Pass 1: Build target lookup tables
     targets: dict[str, RobTarget] = {}
     joint_targets: dict[str, JointTarget] = {}
@@ -454,4 +498,5 @@ def parse_module(source: str) -> ParseResult:
         joint_targets=joint_targets,
         source_text=source,
         procedures=procedures,
+        proc_ranges=proc_ranges,
     )

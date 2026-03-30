@@ -116,4 +116,5 @@ class ParseResult:
     joint_targets: dict[str, JointTarget]
     source_text: str
     procedures: list[str] = field(default_factory=list)  # PROC names found
+    proc_ranges: dict[str, tuple[int, int]] = field(default_factory=dict)  # PROC name -> (start_line, end_line)
     errors: list[str] = field(default_factory=list)       # Non-fatal parse warnings

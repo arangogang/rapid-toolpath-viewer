@@ -133,3 +133,63 @@ def test_procedures_found(simple_mod):
     """Procedure discovery -- asserts 'main' in ParseResult.procedures."""
     result = parse_module(simple_mod)
     assert "main" in result.procedures
+
+
+# ---------------------------------------------------------------------------
+# PROC range extraction (PARS-08)
+# ---------------------------------------------------------------------------
+
+
+def test_proc_ranges_single_proc(simple_mod):
+    """PARS-08: Single PROC -- proc_ranges has one entry with correct line range."""
+    result = parse_module(simple_mod)
+    assert "main" in result.proc_ranges
+    start, end = result.proc_ranges["main"]
+    assert start < end
+    assert start > 0
+
+
+def test_proc_ranges_multi_proc(multiproc_mod):
+    """PARS-08: Multi PROC -- proc_ranges has entries for each PROC with non-overlapping line ranges."""
+    result = parse_module(multiproc_mod)
+    assert "main" in result.proc_ranges
+    assert "path2" in result.proc_ranges
+
+    main_start, main_end = result.proc_ranges["main"]
+    path2_start, path2_end = result.proc_ranges["path2"]
+
+    # Non-overlapping: main ends before path2 starts
+    assert main_end < path2_start
+    # Each range is valid
+    assert main_start < main_end
+    assert path2_start < path2_end
+
+
+def test_proc_filtering(multiproc_mod):
+    """PARS-08: Filter moves by PROC range -- only moves from that PROC are included."""
+    result = parse_module(multiproc_mod)
+    start, end = result.proc_ranges["path2"]
+    path2_moves = [m for m in result.moves if start <= m.source_line <= end]
+    assert len(path2_moves) == 3  # MoveJ p30 + MoveL p40 + MoveL p50
+
+    # Verify the first is a MoveJ
+    assert path2_moves[0].move_type == MoveType.MOVEJ
+
+    # Verify main PROC moves are separate
+    main_start, main_end = result.proc_ranges["main"]
+    main_moves = [m for m in result.moves if main_start <= m.source_line <= main_end]
+    assert len(main_moves) == 2  # 2 MoveL in main
+
+    # All moves accounted for
+    assert len(main_moves) + len(path2_moves) == len(result.moves)
+
+
+def test_proc_ranges_empty():
+    """PARS-08: No PROCs -- proc_ranges is empty dict."""
+    source = """\
+MODULE NoProcTest
+  CONST robtarget p1 := [[100,0,0],[1,0,0,0],[0,0,0,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
+ENDMODULE
+"""
+    result = parse_module(source)
+    assert result.proc_ranges == {}
