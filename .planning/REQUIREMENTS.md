@@ -19,21 +19,21 @@
 - [x] **PARS-05**: robtarget 데이터 타입을 파싱한다 (pos x/y/z + orient q1-q4)
 - [x] **PARS-06**: 멀티라인 robtarget 선언을 올바르게 파싱한다 (세미콜론 기반 토크나이징)
 - [x] **PARS-07**: 파싱 시 각 Move 명령어에 소스 줄 번호를 저장한다 (코드 링크용)
-- [ ] **PARS-08**: 여러 PROC가 있는 .mod 파일에서 표시할 PROC을 선택할 수 있다
+- [x] **PARS-08**: 여러 PROC가 있는 .mod 파일에서 표시할 PROC을 선택할 수 있다
 
 ### 3D Rendering
 
-- [ ] **REND-01**: 툴패스 경로를 3D로 렌더링한다 (MoveL=실선, MoveJ=점선, MoveC=호선)
-- [ ] **REND-02**: 각 워크포인트(robtarget)에 마커를 표시한다
-- [ ] **REND-03**: XYZ 좌표축 인디케이터를 뷰포트 코너에 표시한다
+- [x] **REND-01**: 툴패스 경로를 3D로 렌더링한다 (MoveL=실선, MoveJ=점선, MoveC=호선)
+- [x] **REND-02**: 각 워크포인트(robtarget)에 마커를 표시한다
+- [x] **REND-03**: XYZ 좌표축 인디케이터를 뷰포트 코너에 표시한다
 - [ ] **REND-04**: 각 워크포인트에 TCP 방향을 RGB 축 트라이어드로 시각화한다 (쿼터니언 → 회전행렬 변환)
-- [ ] **REND-05**: OpenGL 3.3 Core Profile + VBO/VAO 아키텍처를 사용한다
+- [x] **REND-05**: OpenGL 3.3 Core Profile + VBO/VAO 아키텍처를 사용한다
 
 ### Camera Controls
 
-- [ ] **CAM-01**: 마우스 드래그로 3D 뷰를 오비트(회전)할 수 있다
-- [ ] **CAM-02**: 마우스 스크롤로 줌 인/아웃할 수 있다
-- [ ] **CAM-03**: 마우스 중클릭 드래그로 팬(이동)할 수 있다
+- [x] **CAM-01**: 마우스 드래그로 3D 뷰를 오비트(회전)할 수 있다
+- [x] **CAM-02**: 마우스 스크롤로 줌 인/아웃할 수 있다
+- [x] **CAM-03**: 마우스 중클릭 드래그로 팬(이동)할 수 있다
 
 ### Step Playback
 
@@ -97,15 +97,15 @@
 | PARS-05 | Phase 1 | Complete |
 | PARS-06 | Phase 1 | Complete |
 | PARS-07 | Phase 1 | Complete |
-| PARS-08 | Phase 3 | Pending |
-| REND-01 | Phase 2 | Pending |
-| REND-02 | Phase 2 | Pending |
-| REND-03 | Phase 2 | Pending |
+| PARS-08 | Phase 3 | Complete |
+| REND-01 | Phase 2 | Complete |
+| REND-02 | Phase 2 | Complete |
+| REND-03 | Phase 2 | Complete |
 | REND-04 | Phase 3 | Pending |
-| REND-05 | Phase 2 | Pending |
-| CAM-01 | Phase 2 | Pending |
-| CAM-02 | Phase 2 | Pending |
-| CAM-03 | Phase 2 | Pending |
+| REND-05 | Phase 2 | Complete |
+| CAM-01 | Phase 2 | Complete |
+| CAM-02 | Phase 2 | Complete |
+| CAM-03 | Phase 2 | Complete |
 | PLAY-01 | Phase 3 | Pending |
 | PLAY-02 | Phase 3 | Pending |
 | PLAY-03 | Phase 3 | Pending |

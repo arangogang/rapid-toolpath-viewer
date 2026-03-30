@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-03-30T08:39:21.652Z"
-last_activity: 2026-03-30
+status: executing
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-30T10:05:26Z"
+last_activity: 2026-03-30 -- Completed 03-01 PlaybackState and PROC ranges
 progress:
   total_phases: 3
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 0
+  completed_phases: 2
+  total_plans: 12
+  completed_plans: 8
+  percent: 88
 ---
 
 # Project State
@@ -21,24 +21,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** .mod 파일을 열면 즉시 3D 툴패스가 렌더링되고, 각 워크포인트를 클릭하면 해당 RAPID 코드 줄로 이동할 수 있어야 한다.
-**Current focus:** Phase 01 — parser-and-file-loading
+**Current focus:** Phase 03 — playback-code-panel-and-linking
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-03-30
+Phase: 03 (playback-code-panel-and-linking) — EXECUTING
+Plan: 2 of 5
+Status: Plan 1 complete, ready for Plan 2
+Last activity: 2026-03-30 -- Completed 03-01 PlaybackState and PROC ranges
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [########=-] 88%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 6
+- Average duration: ~2 min
+- Total execution time: ~1 hour
 
 **By Phase:**
 
@@ -55,6 +55,10 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P01 | 12 | 2 tasks | 14 files |
 | Phase 01 P02 | 3 | 2 tasks | 3 files |
 | Phase 01 P03 | 20 | 1 tasks | 3 files |
+| Phase 02 P01 | 138s | 2 tasks | 5 files |
+| Phase 02 P02 | 142s | 1 tasks | 3 files |
+| Phase 02 P03 | 558s | 2 tasks | 4 files |
+| Phase 03 P01 | 321s | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -72,6 +76,14 @@ Recent decisions affecting current work:
 - [Phase 01]: tokenize_statements() tracks start_line from first non-empty content -- correct line for code panel highlighting
 - [Phase 01]: Offs() resolution returns new RobTarget with pos offset; orient/confdata/extjoint inherited from base per ABB spec
 - [Phase 01]: load_file() is public for testability without QFileDialog interaction; lazy parser import inside load_file() for clean error surfacing
+- [Phase 02]: Interleaved [x,y,z,r,g,b] float32 vertex layout (stride 24 bytes) for all geometry types
+- [Phase 02]: Color palette: MoveL=green, MoveJ=orange, MoveC=blue, markers=yellow
+- [Phase 02]: AXES shaders are identity aliases to SOLID shaders (not copies)
+- [Phase 02]: Use pyrr.matrix44.create_from_quaternion (module function) not pyrr.Matrix44.create_from_quaternion (class method does not exist in pyrr 0.10.3)
+- [Phase 02]: Lazy import of ToolpathGLWidget inside MainWindow.__init__ to isolate OpenGL dependency from parser-only tests
+- [Phase 02]: GL widget tests use _has_gl_context() guard to skip gracefully on headless/offscreen platforms
+- [Phase 03]: Tokenizer treats PROC/ENDPROC/MODULE/ENDMODULE as implicit statement boundaries for correct source_line tracking
+- [Phase 03]: PlaybackState.set_index only emits signal if index is valid AND different from current
 
 ### Pending Todos
 
@@ -84,6 +96,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30T08:33:48.885Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-03-30T10:05:26Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None

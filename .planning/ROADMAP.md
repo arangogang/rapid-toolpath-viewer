@@ -67,7 +67,7 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — PlaybackState model + parser PROC range extraction
+- [x] 03-01-PLAN.md — PlaybackState model + parser PROC range extraction
 - [ ] 03-02-PLAN.md — RapidHighlighter syntax highlighter + CodePanel widget
 - [ ] 03-03-PLAN.md — PlaybackToolbar + GL widget highlight/picking/triads
 - [ ] 03-04-PLAN.md — MainWindow integration (QSplitter, signal wiring, PROC selector, linking)
@@ -82,4 +82,4 @@ Phases execute in numeric order: 1 -> 2 -> 3
 |-------|----------------|--------|-----------|
 | 1. Parser and File Loading | 3/3 | Complete   | 2026-03-30 |
 | 2. 3D Viewer and Camera | 3/4 | In Progress | - |
-| 3. Playback, Code Panel, and Linking | 0/5 | Not started | - |
+| 3. Playback, Code Panel, and Linking | 1/5 | In Progress | - |
