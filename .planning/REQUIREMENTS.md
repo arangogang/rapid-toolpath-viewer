@@ -47,9 +47,9 @@
 
 ### Code Panel
 
-- [ ] **CODE-01**: RAPID 코드가 우측 패널에 표시된다
-- [ ] **CODE-02**: RAPID 키워드가 신택스 하이라이트된다 (MoveL, MoveJ, PROC 등)
-- [ ] **CODE-03**: 현재 선택된 워크포인트에 해당하는 코드 줄이 하이라이트된다
+- [x] **CODE-01**: RAPID 코드가 우측 패널에 표시된다
+- [x] **CODE-02**: RAPID 키워드가 신택스 하이라이트된다 (MoveL, MoveJ, PROC 등)
+- [x] **CODE-03**: 현재 선택된 워크포인트에 해당하는 코드 줄이 하이라이트된다
 
 ### Bidirectional Code-to-3D Linking
 
@@ -113,9 +113,9 @@
 | PLAY-07 | Phase 3 | Pending |
 | PLAY-04 | Phase 3 | Pending |
 | PLAY-05 | Phase 3 | Pending |
-| CODE-01 | Phase 3 | Pending |
-| CODE-02 | Phase 3 | Pending |
-| CODE-03 | Phase 3 | Pending |
+| CODE-01 | Phase 3 | Complete |
+| CODE-02 | Phase 3 | Complete |
+| CODE-03 | Phase 3 | Complete |
 | LINK-01 | Phase 3 | Pending |
 | LINK-02 | Phase 3 | Pending |
 

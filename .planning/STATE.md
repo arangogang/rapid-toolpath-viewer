@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-30T10:05:26Z"
-last_activity: 2026-03-30 -- Completed 03-01 PlaybackState and PROC ranges
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-03-30T10:13:17.610Z"
+last_activity: 2026-03-30
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
   percent: 88
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 ## Current Position
 
 Phase: 03 (playback-code-panel-and-linking) — EXECUTING
-Plan: 2 of 5
-Status: Plan 1 complete, ready for Plan 2
-Last activity: 2026-03-30 -- Completed 03-01 PlaybackState and PROC ranges
+Plan: 3 of 5
+Status: Ready to execute
+Last activity: 2026-03-30
 
 Progress: [########=-] 88%
 
@@ -59,6 +59,7 @@ Progress: [########=-] 88%
 | Phase 02 P02 | 142s | 1 tasks | 3 files |
 | Phase 02 P03 | 558s | 2 tasks | 4 files |
 | Phase 03 P01 | 321s | 2 tasks | 7 files |
+| Phase 03 P02 | 195 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,8 @@ Recent decisions affecting current work:
 - [Phase 02]: GL widget tests use _has_gl_context() guard to skip gracefully on headless/offscreen platforms
 - [Phase 03]: Tokenizer treats PROC/ENDPROC/MODULE/ENDMODULE as implicit statement boundaries for correct source_line tracking
 - [Phase 03]: PlaybackState.set_index only emits signal if index is valid AND different from current
+- [Phase 03]: Use QTextEdit.ExtraSelection (not QPlainTextEdit.ExtraSelection) -- PyQt6 6.10.2 moved ExtraSelection to QTextEdit base class
+- [Phase 03]: TrackingHighlighter subclass pattern for testing QSyntaxHighlighter setFormat calls
 
 ### Pending Todos
 
@@ -96,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30T10:05:26Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-03-30T10:13:17.603Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None

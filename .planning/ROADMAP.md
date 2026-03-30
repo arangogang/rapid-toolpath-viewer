@@ -68,7 +68,7 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md — PlaybackState model + parser PROC range extraction
-- [ ] 03-02-PLAN.md — RapidHighlighter syntax highlighter + CodePanel widget
+- [x] 03-02-PLAN.md — RapidHighlighter syntax highlighter + CodePanel widget
 - [ ] 03-03-PLAN.md — PlaybackToolbar + GL widget highlight/picking/triads
 - [ ] 03-04-PLAN.md — MainWindow integration (QSplitter, signal wiring, PROC selector, linking)
 - [ ] 03-05-PLAN.md — Visual verification checkpoint
