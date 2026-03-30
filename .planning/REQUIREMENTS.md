@@ -54,7 +54,7 @@
 ### Bidirectional Code-to-3D Linking
 
 - [x] **LINK-01**: 3D 뷰어에서 워크포인트를 클릭하면 코드 패널이 해당 줄로 스크롤된다
-- [ ] **LINK-02**: 코드 패널에서 Move 명령어 줄을 클릭하면 3D 뷰어에서 해당 포인트가 선택된다
+- [x] **LINK-02**: 코드 패널에서 Move 명령어 줄을 클릭하면 3D 뷰어에서 해당 포인트가 선택된다
 
 ## v2 Requirements
 
@@ -117,7 +117,7 @@
 | CODE-02 | Phase 3 | Complete |
 | CODE-03 | Phase 3 | Complete |
 | LINK-01 | Phase 3 | Complete |
-| LINK-02 | Phase 3 | Pending |
+| LINK-02 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 30 total

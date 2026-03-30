@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-03-30T10:26:30.883Z"
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-03-30T10:39:42.369Z"
 last_activity: 2026-03-30
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 88
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 ## Current Position
 
 Phase: 03 (playback-code-panel-and-linking) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-03-30
 
@@ -61,6 +61,7 @@ Progress: [########=-] 88%
 | Phase 03 P01 | 321s | 2 tasks | 7 files |
 | Phase 03 P02 | 195 | 2 tasks | 4 files |
 | Phase 03 P03 | 638 | 2 tasks | 5 files |
+| Phase 03 P04 | 639 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,8 @@ Recent decisions affecting current work:
 - [Phase 03]: Ray-cast picking: screen-space projection of all waypoints, 20px threshold, Y-flip for Qt coords
 - [Phase 03]: TCP triads reuse SOLID shader via identity aliases (TRIAD_VERT/TRIAD_FRAG)
 - [Phase 03]: ABB quaternion [w,x,y,z] to pyrr [x,y,z,w] conversion with normalization guard
+- [Phase 03]: GL context guard (_gl_ready) prevents makeCurrent() hang in headless tests
+- [Phase 03]: blockSignals on PROC combo during load_file prevents spurious filter triggers
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30T10:26:30.875Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-03-30T10:39:42.363Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None
