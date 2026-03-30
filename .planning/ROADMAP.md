@@ -71,7 +71,7 @@ Plans:
 - [x] 03-02-PLAN.md — RapidHighlighter syntax highlighter + CodePanel widget
 - [x] 03-03-PLAN.md — PlaybackToolbar + GL widget highlight/picking/triads
 - [x] 03-04-PLAN.md — MainWindow integration (QSplitter, signal wiring, PROC selector, linking)
-- [ ] 03-05-PLAN.md — Visual verification checkpoint
+- [x] 03-05-PLAN.md — Visual verification checkpoint
 
 ## Progress
 
