@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-03-30T08:03:04.128Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-03-30T08:09:10.179Z"
 last_activity: 2026-03-30
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 ## Current Position
 
 Phase: 01 (parser-and-file-loading) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-03-30
 
@@ -53,6 +53,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 12 | 2 tasks | 14 files |
+| Phase 01 P02 | 3 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,9 @@ Recent decisions affecting current work:
 - [Phase 01]: RobTarget/JointTarget use np.ndarray for pos/orient — downstream rendering needs NumPy; custom __eq__/__hash__ override frozen dataclass default that fails on array comparison
 - [Phase 01]: MoveAbsJ stored with has_cartesian=False and target=None — parser tracks all moves for code panel, renderer skips non-Cartesian
 - [Phase 01]: All 14 regex patterns compiled at module import time in patterns.py — 5-10x performance vs per-call compilation
+- [Phase 01]: Two-pass parser architecture ensures named references always resolve regardless of declaration order in .mod file
+- [Phase 01]: tokenize_statements() tracks start_line from first non-empty content -- correct line for code panel highlighting
+- [Phase 01]: Offs() resolution returns new RobTarget with pos offset; orient/confdata/extjoint inherited from base per ABB spec
 
 ### Pending Todos
 
@@ -78,6 +82,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30T08:03:04.121Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-03-30T08:09:10.172Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None

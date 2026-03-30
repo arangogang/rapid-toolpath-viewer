@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md — Project skeleton, data model contracts, regex patterns, test infrastructure
-- [ ] 01-02-PLAN.md — RAPID parser implementation (TDD: tokenizer, two-pass parser, all move types)
+- [x] 01-02-PLAN.md — RAPID parser implementation (TDD: tokenizer, two-pass parser, all move types)
 - [ ] 01-03-PLAN.md — PyQt6 MainWindow with file dialog and title bar update
 
 ### Phase 2: 3D Viewer and Camera
@@ -69,6 +69,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Parser and File Loading | 1/3 | In Progress|  |
+| 1. Parser and File Loading | 2/3 | In Progress|  |
 | 2. 3D Viewer and Camera | 0/0 | Not started | - |
 | 3. Playback, Code Panel, and Linking | 0/0 | Not started | - |
