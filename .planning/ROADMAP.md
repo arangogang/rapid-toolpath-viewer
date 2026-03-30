@@ -44,8 +44,13 @@ Plans:
   3. User can orbit (left-drag), zoom (scroll), and pan (middle-drag) the 3D view with responsive mouse controls
   4. XYZ coordinate axes indicator is visible in the viewport corner for spatial orientation
   5. Rendering uses OpenGL 3.3 Core Profile with VBO/VAO architecture (no immediate mode)
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 4 plans
+
+Plans:
+- [x] 02-01-PLAN.md — Dependencies, geometry builder (ParseResult->vertex arrays, arc tessellation), shader source constants
+- [x] 02-02-PLAN.md — ArcballCamera (orbit/pan/zoom math, view/projection/mvp matrices, unit tests)
+- [x] 02-03-PLAN.md — ToolpathGLWidget (QOpenGLWidget VBO/VAO pipeline, mouse events, axes indicator, MainWindow wiring)
+- [ ] 02-04-PLAN.md — Visual verification checkpoint (human confirms render quality and camera interaction)
 
 ### Phase 3: Playback, Code Panel, and Linking
 **Goal**: User can step through waypoints, view syntax-highlighted RAPID code, and click in either the 3D view or code panel to navigate bidirectionally -- completing the core verification workflow
@@ -59,8 +64,14 @@ Plans:
   5. User can select which PROC to display when a .mod file contains multiple procedures
   6. User can adjust playback speed (0.5x ~ 10x) via slider during auto-play
   7. User can drag a scrubber slider to instantly jump to any position in the path
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 5 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — PlaybackState model + parser PROC range extraction
+- [ ] 03-02-PLAN.md — RapidHighlighter syntax highlighter + CodePanel widget
+- [ ] 03-03-PLAN.md — PlaybackToolbar + GL widget highlight/picking/triads
+- [ ] 03-04-PLAN.md — MainWindow integration (QSplitter, signal wiring, PROC selector, linking)
+- [ ] 03-05-PLAN.md — Visual verification checkpoint
 
 ## Progress
 
@@ -70,5 +81,5 @@ Phases execute in numeric order: 1 -> 2 -> 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Parser and File Loading | 3/3 | Complete   | 2026-03-30 |
-| 2. 3D Viewer and Camera | 0/0 | Not started | - |
-| 3. Playback, Code Panel, and Linking | 0/0 | Not started | - |
+| 2. 3D Viewer and Camera | 3/4 | In Progress | - |
+| 3. Playback, Code Panel, and Linking | 0/5 | Not started | - |
