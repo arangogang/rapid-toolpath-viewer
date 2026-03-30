@@ -16,9 +16,9 @@
 - [ ] **PARS-02**: MoveJ 명령어를 파싱하여 조인트 이동 경로를 추출한다
 - [ ] **PARS-03**: MoveC 명령어를 파싱하여 원호 이동 경로를 추출한다 (CirPoint + endpoint)
 - [ ] **PARS-04**: MoveAbsJ는 파싱하되 3D 렌더링에서 제외한다 (코드 패널에는 표시)
-- [ ] **PARS-05**: robtarget 데이터 타입을 파싱한다 (pos x/y/z + orient q1-q4)
-- [ ] **PARS-06**: 멀티라인 robtarget 선언을 올바르게 파싱한다 (세미콜론 기반 토크나이징)
-- [ ] **PARS-07**: 파싱 시 각 Move 명령어에 소스 줄 번호를 저장한다 (코드 링크용)
+- [x] **PARS-05**: robtarget 데이터 타입을 파싱한다 (pos x/y/z + orient q1-q4)
+- [x] **PARS-06**: 멀티라인 robtarget 선언을 올바르게 파싱한다 (세미콜론 기반 토크나이징)
+- [x] **PARS-07**: 파싱 시 각 Move 명령어에 소스 줄 번호를 저장한다 (코드 링크용)
 - [ ] **PARS-08**: 여러 PROC가 있는 .mod 파일에서 표시할 PROC을 선택할 수 있다
 
 ### 3D Rendering
@@ -94,9 +94,9 @@
 | PARS-02 | Phase 1 | Pending |
 | PARS-03 | Phase 1 | Pending |
 | PARS-04 | Phase 1 | Pending |
-| PARS-05 | Phase 1 | Pending |
-| PARS-06 | Phase 1 | Pending |
-| PARS-07 | Phase 1 | Pending |
+| PARS-05 | Phase 1 | Complete |
+| PARS-06 | Phase 1 | Complete |
+| PARS-07 | Phase 1 | Complete |
 | PARS-08 | Phase 3 | Pending |
 | REND-01 | Phase 2 | Pending |
 | REND-02 | Phase 2 | Pending |
