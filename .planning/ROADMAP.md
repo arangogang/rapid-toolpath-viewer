@@ -45,13 +45,15 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Phase 3: Playback, Code Panel, and Linking
 **Goal**: User can step through waypoints, view syntax-highlighted RAPID code, and click in either the 3D view or code panel to navigate bidirectionally -- completing the core verification workflow
 **Depends on**: Phase 2
-**Requirements**: PLAY-01, PLAY-02, PLAY-03, PLAY-04, PLAY-05, CODE-01, CODE-02, CODE-03, LINK-01, LINK-02, PARS-08, REND-04
+**Requirements**: PLAY-01, PLAY-02, PLAY-03, PLAY-04, PLAY-05, PLAY-06, PLAY-07, CODE-01, CODE-02, CODE-03, LINK-01, LINK-02, PARS-08, REND-04
 **Success Criteria** (what must be TRUE):
   1. User can step forward/backward through waypoints and the current point is visually highlighted in the 3D view with position indicator (N/M)
   2. User can press Play to auto-advance through waypoints sequentially
   3. RAPID source code is displayed in a side panel with syntax highlighting for keywords (MoveL, MoveJ, PROC, etc.)
   4. Clicking a waypoint in the 3D view scrolls the code panel to the corresponding source line, and clicking a Move line in the code panel selects the corresponding 3D waypoint
   5. User can select which PROC to display when a .mod file contains multiple procedures
+  6. User can adjust playback speed (0.5x ~ 10x) via slider during auto-play
+  7. User can drag a scrubber slider to instantly jump to any position in the path
 **Plans**: TBD
 **UI hint**: yes
 

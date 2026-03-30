@@ -42,6 +42,8 @@
 - [ ] **PLAY-03**: Play 버튼으로 자동 재생한다 (워크포인트를 순서대로 이동)
 - [ ] **PLAY-04**: 현재 선택된 워크포인트가 3D 뷰어에서 시각적으로 강조된다
 - [ ] **PLAY-05**: 현재 재생 위치가 "포인트 N / 전체 M" 형식으로 표시된다
+- [ ] **PLAY-06**: 재생 속도 슬라이더 (0.5x ~ 10x)로 자동 재생 속도를 조절할 수 있다
+- [ ] **PLAY-07**: 스크러버 슬라이더로 전체 경로에서 임의 위치로 즉시 이동할 수 있다
 
 ### Code Panel
 
@@ -58,7 +60,7 @@
 
 ### Playback Enhancement
 
-- **ENH-01**: 속도 조절 슬라이더가 있는 애니메이션 재생 (경로를 따라 마커 이동)
+- **ENH-01**: 경로를 따라 마커가 부드럽게 이동하는 애니메이션 재생 (구간 보간)
 - **ENH-02**: 속도(speeddata) / 존(zonedata) 데이터 오버레이 (경로 색상 그라디언트)
 
 ### Path Analysis
@@ -107,6 +109,8 @@
 | PLAY-01 | Phase 3 | Pending |
 | PLAY-02 | Phase 3 | Pending |
 | PLAY-03 | Phase 3 | Pending |
+| PLAY-06 | Phase 3 | Pending |
+| PLAY-07 | Phase 3 | Pending |
 | PLAY-04 | Phase 3 | Pending |
 | PLAY-05 | Phase 3 | Pending |
 | CODE-01 | Phase 3 | Pending |
@@ -116,8 +120,8 @@
 | LINK-02 | Phase 3 | Pending |
 
 **Coverage:**
-- v1 requirements: 28 total
-- Mapped to phases: 28
+- v1 requirements: 30 total
+- Mapped to phases: 30
 - Unmapped: 0
 
 ---
