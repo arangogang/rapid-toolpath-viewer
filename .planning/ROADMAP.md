@@ -13,8 +13,8 @@ This project delivers a Windows desktop application that opens ABB RAPID .mod fi
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Parser and File Loading** - Parse .mod files into structured data with all move types, robtargets, and source line tracking (completed 2026-03-30)
-- [ ] **Phase 2: 3D Viewer and Camera** - Render toolpaths in 3D with VBO pipeline and mouse-driven camera controls
-- [ ] **Phase 3: Playback, Code Panel, and Linking** - Step through waypoints, view RAPID code, and navigate bidirectionally between 3D view and source
+- [x] **Phase 2: 3D Viewer and Camera** - Render toolpaths in 3D with VBO pipeline and mouse-driven camera controls
+- [x] **Phase 3: Playback, Code Panel, and Linking** - Step through waypoints, view RAPID code, and navigate bidirectionally between 3D view and source (completed 2026-03-30)
 
 ## Phase Details
 
@@ -50,7 +50,7 @@ Plans:
 - [x] 02-01-PLAN.md — Dependencies, geometry builder (ParseResult->vertex arrays, arc tessellation), shader source constants
 - [x] 02-02-PLAN.md — ArcballCamera (orbit/pan/zoom math, view/projection/mvp matrices, unit tests)
 - [x] 02-03-PLAN.md — ToolpathGLWidget (QOpenGLWidget VBO/VAO pipeline, mouse events, axes indicator, MainWindow wiring)
-- [ ] 02-04-PLAN.md — Visual verification checkpoint (human confirms render quality and camera interaction)
+- [x] 02-04-PLAN.md — Visual verification checkpoint (human confirms render quality and camera interaction)
 
 ### Phase 3: Playback, Code Panel, and Linking
 **Goal**: User can step through waypoints, view syntax-highlighted RAPID code, and click in either the 3D view or code panel to navigate bidirectionally -- completing the core verification workflow
@@ -81,5 +81,5 @@ Phases execute in numeric order: 1 -> 2 -> 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Parser and File Loading | 3/3 | Complete   | 2026-03-30 |
-| 2. 3D Viewer and Camera | 3/4 | In Progress | - |
-| 3. Playback, Code Panel, and Linking | 4/5 | In Progress|  |
+| 2. 3D Viewer and Camera | 4/4 | Complete | 2026-03-30 |
+| 3. Playback, Code Panel, and Linking | 5/5 | Complete | 2026-03-30 |
