@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Toolpath Editing
-status: Not started (roadmap created)
-stopped_at: Phase 4 UI-SPEC approved
+status: Executing
+stopped_at: Completed 04-01-PLAN.md
 last_updated: "2026-04-01T08:03:55.670Z"
-last_activity: 2026-04-01 -- Roadmap created for v1.1
+last_activity: 2026-04-01 -- Plan 04-01 complete (EditModel + SelectionState)
 progress:
   total_phases: 6
   completed_phases: 3
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-01)
 ## Current Position
 
 Phase: 4 - Edit Infrastructure, Selection, and Inspection
-Plan: --
-Status: Not started (roadmap created)
-Last activity: 2026-04-01 -- Roadmap created for v1.1
+Plan: 1 of 3 complete
+Status: Executing
+Last activity: 2026-04-01 -- Plan 01 complete (EditModel + SelectionState)
 
-Progress: [----------] 0%
+Progress: [###-------] 33%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [----------] 0%
 | Phase 03 P03 | 638s | 2 tasks | 5 files |
 | Phase 03 P04 | 639s | 2 tasks | 3 files |
 | Phase 03 P05 | 120s | 2 tasks | 0 files |
+| Phase 04 P01 | 143s | 2 tasks | 4 files |
 
 **Recent Trend:**
 
@@ -101,6 +102,10 @@ Recent decisions affecting current work:
 - [v1.1 Roadmap]: QUndoStack wired in Phase 4 before any mutation code exists (pitfall 3 avoidance)
 - [v1.1 Roadmap]: Export last -- ModWriter design benefits from knowing all edit types (coordinate, speed, zone, laser, delete, insert)
 - [v1.1 Roadmap]: Source text patching for .mod export, never regeneration (pitfall 2 avoidance)
+- [Phase 04 P01]: QUndoStack imported from PyQt6.QtGui (not QtWidgets) per PyQt6 6.10 API
+- [Phase 04 P01]: selection_changed uses pyqtSignal(object) because PyQt6 does not support frozenset as signal type
+- [Phase 04 P01]: EditPoint.from_move for MoveAbsJ (target=None) defaults pos to np.zeros(3)
+- [Phase 04 P01]: extend_to delegates to toggle (Ctrl+click behavior per D-02)
 
 ### Pending Todos
 
@@ -116,6 +121,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-01T08:03:55.663Z
-Stopped at: Phase 4 UI-SPEC approved
-Resume file: .planning/phases/04-edit-infrastructure-selection-and-inspection/04-UI-SPEC.md
+Last session: 2026-04-01T08:39:59Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: .planning/phases/04-edit-infrastructure-selection-and-inspection/04-02-PLAN.md

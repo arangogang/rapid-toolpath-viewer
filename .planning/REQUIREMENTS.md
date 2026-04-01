@@ -62,13 +62,13 @@ Requirements for milestone v1.1: Toolpath Editing. Each maps to roadmap phases.
 
 ### Edit Infrastructure
 
-- [ ] **EDIT-01**: Mutable EditModel 레이어 — frozen 파서 토큰 위에 편집 가능한 래퍼, 모든 편집 기능의 기반
-- [ ] **EDIT-02**: QUndoStack 기반 Undo/Redo (Ctrl+Z/Y) — 모든 편집 작업을 QUndoCommand로 래핑
+- [x] **EDIT-01**: Mutable EditModel 레이어 — frozen 파서 토큰 위에 편집 가능한 래퍼, 모든 편집 기능의 기반
+- [x] **EDIT-02**: QUndoStack 기반 Undo/Redo (Ctrl+Z/Y) — 모든 편집 작업을 QUndoCommand로 래핑
 
 ### Selection
 
-- [ ] **SEL-01**: 3D 뷰어에서 워크포인트 클릭으로 단일 선택, 선택 시 RAPID 코드 줄 하이라이트 연동
-- [ ] **SEL-02**: Shift/Ctrl 클릭으로 다중 선택 지원, 선택된 포인트들 시각적 구분
+- [x] **SEL-01**: 3D 뷰어에서 워크포인트 클릭으로 단일 선택, 선택 시 RAPID 코드 줄 하이라이트 연동
+- [x] **SEL-02**: Shift/Ctrl 클릭으로 다중 선택 지원, 선택된 포인트들 시각적 구분
 
 ### Inspection
 
@@ -155,10 +155,10 @@ Requirements for milestone v1.1: Toolpath Editing. Each maps to roadmap phases.
 | CODE-03 | Phase 3 | Complete |
 | LINK-01 | Phase 3 | Complete |
 | LINK-02 | Phase 3 | Complete |
-| EDIT-01 | Phase 4 | Pending |
-| EDIT-02 | Phase 4 | Pending |
-| SEL-01 | Phase 4 | Pending |
-| SEL-02 | Phase 4 | Pending |
+| EDIT-01 | Phase 4 | Complete |
+| EDIT-02 | Phase 4 | Complete |
+| SEL-01 | Phase 4 | Complete |
+| SEL-02 | Phase 4 | Complete |
 | INSP-01 | Phase 4 | Pending |
 | MOD-01 | Phase 5 | Pending |
 | MOD-02 | Phase 5 | Pending |
