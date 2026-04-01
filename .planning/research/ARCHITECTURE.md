@@ -1,564 +1,552 @@
-# Architecture Research
+# Architecture Patterns: Toolpath Editing Integration
 
-**Domain:** Desktop 3D toolpath viewer (ABB RAPID .mod parser + OpenGL renderer)
-**Researched:** 2026-03-30
-**Confidence:** HIGH
+**Domain:** Toolpath editing for ABB RAPID viewer (read-only viewer -> read-write editor)
+**Researched:** 2026-04-01
+**Confidence:** HIGH (based on direct codebase analysis + established Qt/MVC patterns)
 
-## Standard Architecture
-
-### System Overview
+## Current Architecture (Read-Only)
 
 ```
-+-----------------------------------------------------------------------+
-|                         UI Layer (PyQt6)                               |
-|  +----------------+  +-------------------+  +-----------------------+ |
-|  | Menu / Toolbar |  | Code Panel        |  | Playback Controls     | |
-|  | (File open)    |  | (QPlainTextEdit)  |  | (Step/Play/Pause)     | |
-|  +-------+--------+  +--------+----------+  +----------+------------+ |
-|          |                     |                        |              |
-+----------+---------------------+------------------------+-------------+
-|                       Controller Layer                                 |
-|  +------------------------------------------------------------------+ |
-|  |                    AppController                                  | |
-|  |  - Coordinates file load, selection sync, playback commands       | |
-|  +-------+------------------+---------------------+-----------------+ |
-|          |                  |                     |                    |
-+----------+------------------+---------------------+-------------------+
-|                        Model Layer                                     |
-|  +--------------+  +------------------+  +------------------------+   |
-|  | RapidParser   |  | ToolpathModel    |  | PlaybackStateMachine   |   |
-|  | (.mod -> AST) |  | (points, paths,  |  | (idle/playing/paused/  |   |
-|  |               |  |  line mappings)  |  |  stepping)             |   |
-|  +------+-------+  +--------+---------+  +-----------+------------+   |
-|         |                   |                         |                |
-+---------+-------------------+-------------------------+---------------+
-|                       Rendering Layer                                  |
-|  +------------------------------------------------------------------+ |
-|  |              GLViewport (QOpenGLWidget subclass)                   | |
-|  |  +-------------+  +----------------+  +------------------------+  | |
-|  |  | Camera       |  | SceneRenderer  |  | PickingEngine          |  | |
-|  |  | (orbit/pan/  |  | (paths, points |  | (color-based or ray    |  | |
-|  |  |  zoom)       |  |  axes, grid)   |  |  cast selection)       |  | |
-|  |  +-------------+  +----------------+  +------------------------+  | |
-|  +------------------------------------------------------------------+ |
-+-----------------------------------------------------------------------+
+.mod file --> rapid_parser.parse_module() --> ParseResult (frozen items)
+                                                  |
+                                                  v
+                                        geometry_builder.build_geometry()
+                                                  |
+                                                  v
+                                          GeometryBuffers (numpy arrays)
+                                                  |
+                                                  v
+                                    ToolpathGLWidget (VBO upload + render)
+                                                  |
+                                          PlaybackState (index tracking)
+                                                  |
+                                          MainWindow (signal routing)
+                                                  |
+                                          CodePanel (read-only display)
 ```
 
-### Component Responsibilities
+### Key Architectural Characteristics
 
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| RapidParser | Parse .mod file into structured data: robtargets, move instructions, procedures | Regex-based line parser with state tracking for MODULE/PROC blocks |
-| ToolpathModel | Central data model holding parsed points, path segments, line number mappings | Plain Python dataclasses; emits Qt signals on change |
-| PlaybackStateMachine | Manage step-through state: current index, play/pause, speed, direction | Enum-based FSM with QTimer for auto-play ticking |
-| AppController | Wire user actions to model mutations and view updates | Single coordinator class connecting signals/slots |
-| GLViewport | QOpenGLWidget subclass owning the OpenGL context and render loop | Override initializeGL, paintGL, resizeGL; delegate to sub-renderers |
-| Camera | Arcball orbit, pan, zoom from mouse input | Maintains view matrix; updates on mouse drag events |
-| SceneRenderer | Draw path lines, point markers, coordinate axes, grid | VBO-based batch rendering; separate draw calls per visual type |
-| PickingEngine | Map mouse clicks to waypoint indices | Color-based picking (render unique color per point, read pixel) |
-| CodePanel | Display .mod source with line highlighting | QPlainTextEdit with QTextCursor-based highlighting |
-| PlaybackControls | Step forward/back, play/pause buttons, speed slider | QToolBar with QPushButtons wired to PlaybackStateMachine |
+| Characteristic | Current State | Editing Impact |
+|----------------|---------------|----------------|
+| `MoveInstruction` | `frozen=True` dataclass | Cannot mutate in place -- need mutable edit model |
+| `RobTarget` | `frozen=True` dataclass | Cannot modify pos/orient in place |
+| `ParseResult` | Non-frozen, but holds frozen items | Holds immutable move list items |
+| Data flow | One-way: parse -> build -> render | Must become bidirectional: edit -> rebuild -> re-render |
+| Source text | Stored as `source_text` string in ParseResult | Export requires patching original source, not regenerating |
+| GL geometry | Rebuilt entirely on each `update_scene()` call | Acceptable for edit workflow (not real-time animation) |
+| PlaybackState | Owns `_moves: list[MoveInstruction]` + current index | Must coordinate with EditModel on deletions/modifications |
 
-## Recommended Project Structure
+## Recommended Architecture (Read-Write)
 
 ```
-src/
-  rapid_viewer/
-    __init__.py
-    main.py                    # Application entry point, QApplication setup
-    controller.py              # AppController: wires model <-> views
-
-    parser/
-      __init__.py
-      rapid_parser.py          # Top-level parse_module() function
-      tokens.py                # Data types: RobTarget, MoveInstruction, Procedure, etc.
-      patterns.py              # Compiled regex patterns for RAPID syntax
-
-    model/
-      __init__.py
-      toolpath_model.py        # ToolpathModel: holds parsed data + selection state
-      playback.py              # PlaybackStateMachine: step/play state management
-
-    viewer/
-      __init__.py
-      gl_viewport.py           # GLViewport: QOpenGLWidget subclass
-      camera.py                # Camera: arcball orbit, pan, zoom
-      scene_renderer.py        # SceneRenderer: draws paths, points, axes
-      picking.py               # PickingEngine: color-based object picking
-      shaders/                 # GLSL vertex/fragment shaders (optional, can use fixed pipeline)
-        basic.vert
-        basic.frag
-        picking.vert
-        picking.frag
-
-    ui/
-      __init__.py
-      main_window.py           # QMainWindow layout: splitter with code + 3D
-      code_panel.py            # CodePanel: source display with line highlighting
-      playback_controls.py     # PlaybackControls: toolbar buttons
-
-    utils/
-      __init__.py
-      math_utils.py            # Quaternion to rotation matrix, vector ops
+.mod file --> rapid_parser.parse_module() --> ParseResult (immutable snapshot)
+                                                  |
+                                                  v
+                                          EditModel (mutable working copy)
+                                           /    |    \
+                                          /     |     \
+                            PropertyPanel  PlaybackState  EditController
+                            (inspect/edit) (index only)  (command dispatch)
+                                          \     |     /
+                                           \    |    /
+                                          EditModel mutation
+                                                  |
+                                            to_parse_result()
+                                                  |
+                                          build_geometry() --> GL buffers
+                                          
+                          EditModel + source_text --> ModWriter --> new .mod file
 ```
 
-### Structure Rationale
+### New Components Needed
 
-- **parser/:** Isolated from Qt entirely. Pure Python, testable without GUI. The parser should work as a standalone library.
-- **model/:** Qt-dependent only for QObject signals. No rendering or UI knowledge. This is the single source of truth.
-- **viewer/:** All OpenGL code lives here. Nothing in viewer/ touches parser logic directly -- it reads from ToolpathModel.
-- **ui/:** Standard Qt widgets. No OpenGL code. Communicates through the controller.
-- **Separation principle:** parser/ and model/ can be tested in pure Python unit tests. viewer/ requires an OpenGL context but no file I/O. ui/ can be tested with QTest.
+| Component | Module Path | Responsibility |
+|-----------|-------------|----------------|
+| `EditModel` | `src/rapid_viewer/model/edit_model.py` | Mutable working copy of ParseResult with change tracking and selection state |
+| `EditableMove` | `src/rapid_viewer/model/edit_model.py` | Mutable wrapper around MoveInstruction fields (inner class or same module) |
+| `EditController` | `src/rapid_viewer/model/edit_controller.py` | Command dispatch: modify, delete, scene rebuild trigger |
+| `PropertyPanel` | `src/rapid_viewer/ui/property_panel.py` | QWidget showing/editing waypoint properties (pos, speed, zone, laser) |
+| `ModWriter` | `src/rapid_viewer/export/mod_writer.py` | Generate .mod source by patching original source text with edits |
 
-## Architectural Patterns
+### Existing Components to Modify
 
-### Pattern 1: Model-View-Presenter (MVP) via Qt Signals
+| Component | File | Changes Needed |
+|-----------|------|----------------|
+| `MainWindow` | `ui/main_window.py` | Add PropertyPanel to layout (3-way splitter), wire EditModel signals, add File > Save As menu action, instantiate EditController |
+| `ToolpathGLWidget` | `renderer/toolpath_gl_widget.py` | Multi-select support (Ctrl+click), visual feedback for selected set, emit modifier key state with waypoint_clicked |
+| `PlaybackState` | `ui/playback_state.py` | No structural changes -- continues to track index. MainWindow updates its move list when EditModel changes. |
+| `geometry_builder` | `renderer/geometry_builder.py` | No changes. Already accepts ParseResult; EditModel produces compatible output via `to_parse_result()`. |
+| `CodePanel` | `ui/code_panel.py` | Optional: highlight modified/deleted lines with different background color |
 
-**What:** The ToolpathModel emits signals when data changes. Views (GLViewport, CodePanel) connect to these signals and update themselves. User actions in views emit signals that the AppController receives and translates into model operations.
+## Component Design Details
 
-**When to use:** Always -- this is the primary coordination pattern for the entire application.
+### 1. EditModel -- The Central Mutable State
 
-**Trade-offs:** Slightly more boilerplate than direct calls, but decouples components cleanly. Views never talk to each other directly.
+The core architectural addition. `MoveInstruction` is `frozen=True`, so mutations require a mutable wrapper.
 
 ```python
-# model/toolpath_model.py
-from PyQt6.QtCore import QObject, pyqtSignal
-
-class ToolpathModel(QObject):
-    data_loaded = pyqtSignal()              # New .mod parsed
-    selection_changed = pyqtSignal(int)      # Selected waypoint index (-1 = none)
-    playback_index_changed = pyqtSignal(int) # Current playback position
-
-    def __init__(self):
-        super().__init__()
-        self.waypoints: list[WayPoint] = []
-        self.path_segments: list[PathSegment] = []
-        self.source_lines: list[str] = []
-        self._selected_index: int = -1
-
-    def set_selection(self, index: int):
-        if index != self._selected_index:
-            self._selected_index = index
-            self.selection_changed.emit(index)
-```
-
-```python
-# controller.py
-class AppController:
-    def __init__(self, model, gl_viewport, code_panel, playback_controls):
-        # Model -> Views
-        model.selection_changed.connect(gl_viewport.highlight_point)
-        model.selection_changed.connect(code_panel.highlight_line)
-        model.data_loaded.connect(gl_viewport.rebuild_scene)
-        model.data_loaded.connect(code_panel.load_source)
-
-        # Views -> Controller -> Model
-        gl_viewport.point_picked.connect(self._on_point_picked)
-        code_panel.line_clicked.connect(self._on_line_clicked)
-        playback_controls.step_forward.connect(self._on_step_forward)
-
-    def _on_point_picked(self, waypoint_index: int):
-        self.model.set_selection(waypoint_index)
-
-    def _on_line_clicked(self, line_number: int):
-        index = self.model.line_to_waypoint(line_number)
-        if index is not None:
-            self.model.set_selection(index)
-```
-
-### Pattern 2: Bidirectional Code-Line Linking via Index Maps
-
-**What:** The parser builds two lookup dictionaries during parse time: `waypoint_index -> source_line_number` and `source_line_number -> waypoint_index`. These are stored in ToolpathModel and queried by both GLViewport (on pick) and CodePanel (on click).
-
-**When to use:** Every time a .mod file is loaded. The mapping is immutable after parse -- no need for dynamic updates.
-
-**Trade-offs:** Simple O(1) lookup in both directions. Only works for Move instruction lines, not arbitrary code. This is fine because only Move instructions produce waypoints.
-
-```python
-# parser/tokens.py
-from dataclasses import dataclass
-import numpy as np
+# src/rapid_viewer/model/edit_model.py
 
 @dataclass
-class WayPoint:
-    position: np.ndarray       # [x, y, z] in mm
-    orientation: np.ndarray    # [q1, q2, q3, q4] quaternion
-    config: tuple[int, ...]    # Robot configuration
-    source_line: int           # 0-indexed line number in .mod file
-    name: str                  # robtarget variable name (e.g. "p10")
+class EditableMove:
+    """Mutable wrapper around MoveInstruction fields.
+    
+    Stores original MoveInstruction for diff tracking and export patching.
+    Mutable copies of all user-editable fields.
+    """
+    original: MoveInstruction
+    index: int                          # Position in original move list
+    # Mutable editable copies
+    pos: np.ndarray | None              # shape (3,), from original.target.pos
+    orient: np.ndarray | None           # shape (4,), from original.target.orient
+    speed: str                          # e.g. "v100"
+    zone: str                           # e.g. "z10", "fine"
+    laser_on: bool
+    deleted: bool = False
+    
+    @property
+    def is_modified(self) -> bool:
+        """True if any field differs from original."""
+        ...
+    
+    def to_move_instruction(self) -> MoveInstruction:
+        """Reconstruct frozen MoveInstruction from current mutable state.
+        
+        Creates new RobTarget with modified pos if needed, then builds
+        new MoveInstruction with all current field values.
+        """
+        ...
 
-@dataclass
-class PathSegment:
-    start_index: int           # Index into waypoints list
-    end_index: int             # Index into waypoints list
-    move_type: str             # "MoveL", "MoveJ", "MoveC", "MoveAbsJ"
-    speed: str                 # Speed data name (e.g. "v100")
-    zone: str                  # Zone data name (e.g. "z10", "fine")
-    source_line: int           # Line of the Move instruction
 
-@dataclass
-class ParseResult:
-    module_name: str
-    waypoints: list[WayPoint]
-    segments: list[PathSegment]
-    source_text: str
-    line_to_waypoint: dict[int, int]      # source_line -> waypoint_index
-    waypoint_to_line: dict[int, int]      # waypoint_index -> source_line
+class EditModel(QObject):
+    """Mutable working copy of parsed toolpath data.
+    
+    Single source of truth for:
+    - Which moves exist (including deletions)
+    - Current field values for each move
+    - Which moves are selected
+    
+    Signals:
+        move_modified(int)       -- A single move at index was edited
+        move_deleted(int)        -- A move at index was marked deleted
+        model_changed()          -- Any structural change requiring full rebuild
+        selection_changed(list)  -- Selected indices changed
+    """
+    move_modified = pyqtSignal(int)
+    move_deleted = pyqtSignal(int)
+    model_changed = pyqtSignal()
+    selection_changed = pyqtSignal(list)
+    
+    def __init__(self, parse_result: ParseResult):
+        self._original = parse_result
+        self._moves: list[EditableMove] = [
+            EditableMove(m, i, ...) for i, m in enumerate(parse_result.moves)
+        ]
+        self._selected_indices: list[int] = []
+    
+    # -- Read API (consumed by PropertyPanel, PlaybackState, ModWriter) --
+    
+    def active_moves(self) -> list[MoveInstruction]:
+        """Return non-deleted moves as frozen MoveInstructions."""
+        return [m.to_move_instruction() for m in self._moves if not m.deleted]
+    
+    def to_parse_result(self) -> ParseResult:
+        """Build ParseResult-compatible object for geometry_builder.
+        
+        Uses dataclasses.replace() on original ParseResult with
+        moves=self.active_moves(). Preserves targets dict, source_text, etc.
+        """
+        ...
+    
+    def get_move(self, index: int) -> EditableMove | None:
+        """Get EditableMove by index for PropertyPanel display."""
+        ...
+    
+    def selected_moves(self) -> list[EditableMove]:
+        """Return currently selected EditableMoves."""
+        ...
+    
+    # -- Write API (called by EditController) --
+    
+    def modify_position(self, index: int, offset: np.ndarray) -> None: ...
+    def set_speed(self, index: int, speed: str) -> None: ...
+    def set_zone(self, index: int, zone: str) -> None: ...
+    def set_laser(self, index: int, on: bool) -> None: ...
+    def delete_move(self, index: int) -> None: ...
+    def select(self, indices: list[int]) -> None: ...
+    def toggle_select(self, index: int) -> None:
+        """Add/remove index from selection (for Ctrl+click)."""
+        ...
 ```
 
-### Pattern 3: Enum-Based Playback State Machine
+**Design rationale:**
+- Keeps existing frozen dataclasses untouched -- zero risk of breaking parser or renderer
+- `to_parse_result()` produces input compatible with existing `build_geometry()` -- zero renderer changes needed
+- Change tracking is per-move via `is_modified` property, enabling surgical export patching
+- Signal-based notification matches the existing Qt signal pattern throughout the codebase
 
-**What:** A finite state machine with four states (IDLE, PLAYING, PAUSED, STEPPING) that governs step-through behavior. Uses QTimer for auto-play ticking. Transitions are explicit methods, not string-based.
+### 2. EditController -- Command Dispatch and Scene Rebuild
 
-**When to use:** All playback control logic flows through this FSM. The UI buttons map directly to transition methods.
-
-**Trade-offs:** Simple and predictable. No external library needed (no `transitions` or `python-statemachine` dependency). A plain enum + if/elif is sufficient for four states.
+Thin layer between UI actions and EditModel mutations. Owns the "edit -> rebuild -> render" cycle.
 
 ```python
-# model/playback.py
-from enum import Enum, auto
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+# src/rapid_viewer/model/edit_controller.py
 
-class PlaybackState(Enum):
-    IDLE = auto()       # No file loaded
-    STOPPED = auto()    # File loaded, at start or end
-    PLAYING = auto()    # Auto-advancing
-    PAUSED = auto()     # Auto-play paused at some index
-
-class PlaybackStateMachine(QObject):
-    index_changed = pyqtSignal(int)
-    state_changed = pyqtSignal(PlaybackState)
-
-    def __init__(self):
-        super().__init__()
-        self._state = PlaybackState.IDLE
-        self._index = 0
-        self._max_index = 0
-        self._timer = QTimer()
-        self._timer.timeout.connect(self._tick)
-        self._speed_ms = 500  # ms between steps
-
-    def load(self, num_waypoints: int):
-        self._max_index = num_waypoints - 1
-        self._index = 0
-        self._set_state(PlaybackState.STOPPED)
-
-    def play(self):
-        if self._state in (PlaybackState.STOPPED, PlaybackState.PAUSED):
-            self._set_state(PlaybackState.PLAYING)
-            self._timer.start(self._speed_ms)
-
-    def pause(self):
-        if self._state == PlaybackState.PLAYING:
-            self._timer.stop()
-            self._set_state(PlaybackState.PAUSED)
-
-    def step_forward(self):
-        if self._state != PlaybackState.IDLE:
-            self._timer.stop()
-            self._advance(1)
-            self._set_state(PlaybackState.PAUSED)
-
-    def step_backward(self):
-        if self._state != PlaybackState.IDLE:
-            self._timer.stop()
-            self._advance(-1)
-            self._set_state(PlaybackState.PAUSED)
-
-    def _tick(self):
-        if self._index >= self._max_index:
-            self._timer.stop()
-            self._set_state(PlaybackState.STOPPED)
-        else:
-            self._advance(1)
-
-    def _advance(self, delta: int):
-        new_index = max(0, min(self._max_index, self._index + delta))
-        if new_index != self._index:
-            self._index = new_index
-            self.index_changed.emit(self._index)
-
-    def _set_state(self, state: PlaybackState):
-        if state != self._state:
-            self._state = state
-            self.state_changed.emit(state)
+class EditController(QObject):
+    """Dispatches edit commands to EditModel and triggers scene rebuild.
+    
+    All edit operations flow through here:
+    PropertyPanel -> EditController -> EditModel -> signal -> scene rebuild
+    
+    This indirection enables:
+    - Future undo/redo stack (record commands before executing)
+    - Debounced scene rebuild (batch rapid edits)
+    - Consistent validation before mutation
+    """
+    
+    def __init__(self, edit_model: EditModel, gl_widget, playback_state):
+        self._model = edit_model
+        self._gl_widget = gl_widget
+        self._playback_state = playback_state
+        self._model.model_changed.connect(self._rebuild_scene)
+        self._model.move_modified.connect(self._on_move_modified)
+    
+    def apply_offset(self, indices: list[int], dx: float, dy: float, dz: float):
+        """Apply position offset to selected moves. Emits model_changed."""
+        offset = np.array([dx, dy, dz], dtype=np.float64)
+        for idx in indices:
+            self._model.modify_position(idx, offset)
+        self._model.model_changed.emit()
+    
+    def change_speed(self, indices: list[int], speed: str): ...
+    def change_zone(self, indices: list[int], zone: str): ...
+    def toggle_laser(self, indices: list[int], on: bool): ...
+    
+    def delete_moves(self, indices: list[int]):
+        """Mark moves as deleted. Geometry reconnects automatically."""
+        for idx in sorted(indices, reverse=True):
+            self._model.delete_move(idx)
+        self._model.model_changed.emit()
+    
+    def _rebuild_scene(self):
+        """Regenerate geometry from edited model and update GL + playback."""
+        result = self._model.to_parse_result()
+        self._gl_widget.update_scene(result)
+        self._playback_state.set_moves(result.moves)
+    
+    def _on_move_modified(self, index: int):
+        """Single move changed -- still do full rebuild (fast enough)."""
+        self._rebuild_scene()
 ```
 
-### Pattern 4: Color-Based Picking Over Ray Casting
+### 3. PropertyPanel -- Waypoint Inspector/Editor
 
-**What:** To determine which waypoint was clicked, render the scene to an offscreen framebuffer with each waypoint drawn in a unique color (index encoded as RGB). Read the pixel at the click position and decode back to waypoint index.
+```
++--------------------------------------------------+
+| Property Panel                                    |
+|--------------------------------------------------|
+| Move Type: MoveL          Source: Line 42         |
+|--------------------------------------------------|
+| Position                                          |
+|  X:  150.000  mm                                  |
+|  Y:  200.500  mm                                  |
+|  Z:   50.250  mm                                  |
+|--------------------------------------------------|
+| Offset (additive)                                 |
+|  dX: [________]  dY: [________]  dZ: [________]  |
+|  [Apply Offset]  [Apply Offset to All Selected]   |
+|--------------------------------------------------|
+| Orientation (read-only)                           |
+|  q1: 0.707  q2: 0.000  q3: 0.707  q4: 0.000    |
+|--------------------------------------------------|
+| Speed: [v100     v]   Zone: [z10      v]         |
+|--------------------------------------------------|
+| Laser: [x] ON                                    |
+|--------------------------------------------------|
+| [Delete Waypoint(s)]                             |
++--------------------------------------------------+
+```
 
-**When to use:** For mouse click selection of waypoints in the 3D viewport.
+Key design decisions:
+- **Offset input, not absolute position editing.** Robot engineers think in offsets ("move this 2mm in Z"). Direct position editing risks typos that could send the robot into a table. Offset input is safer and matches the domain mental model.
+- **"Apply to All Selected" button** enables batch offset operations. Select 10 waypoints, apply Z+5mm to all at once.
+- **Speed/Zone as QComboBox** with common RAPID values (v5, v10, v50, v100, v500, v1000, v2000, v5000 for speed; fine, z0, z1, z5, z10, z50, z100, z200 for zone). Also allow free text entry for custom speed data.
+- **Orientation is read-only.** Quaternion editing is error-prone and rarely needed in toolpath correction. Out of scope for v1.1.
 
-**Trade-offs:** Simpler to implement than ray casting (no matrix math, no intersection tests). Pixel-perfect accuracy. Slight performance cost for the second render pass, but negligible for toolpath scenes with hundreds or low thousands of points. Ray casting would be preferable only if we needed hover/proximity detection without clicking.
+### 4. ModWriter -- .mod File Export
+
+**Critical design decision: Patch original source, do not regenerate.**
 
 ```python
-# viewer/picking.py  (conceptual)
-def pick_at(self, x: int, y: int) -> int:
-    """Returns waypoint index at screen position, or -1 if nothing."""
-    self._fbo.bind()
-    glClearColor(0, 0, 0, 0)
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+# src/rapid_viewer/export/mod_writer.py
 
-    for i, wp in enumerate(self._waypoints):
-        # Encode index as color: i+1 so that 0 = background
-        r = ((i + 1) & 0xFF) / 255.0
-        g = (((i + 1) >> 8) & 0xFF) / 255.0
-        b = (((i + 1) >> 16) & 0xFF) / 255.0
-        self._draw_point_marker(wp.position, (r, g, b))
-
-    pixel = glReadPixels(x, self._height - y, 1, 1, GL_RGB, GL_UNSIGNED_BYTE)
-    index = pixel[0] + (pixel[1] << 8) + (pixel[2] << 16) - 1
-    self._fbo.release()
-    return index  # -1 if background was clicked
+class ModWriter:
+    """Generate .mod file by patching original source with edits.
+    
+    Strategy:
+    - Start with ParseResult.source_text (original file content)
+    - For each EditableMove where is_modified==True:
+        - If position changed: patch the robtarget declaration line
+        - If speed/zone changed: patch the MoveL/MoveJ instruction line
+        - If laser changed: insert/modify SetDO before the move line
+    - For each deleted move: remove or comment out the line
+    - Write patched source to output file
+    
+    Line patching order: process from bottom of file upward so that
+    line number references remain valid as earlier lines are modified.
+    """
+    
+    def export(self, edit_model: EditModel, output_path: Path) -> None: ...
+    
+    def _build_patches(self, edit_model: EditModel) -> list[Patch]: ...
+    
+    def _patch_robtarget_pos(self, line: str, new_pos: np.ndarray) -> str:
+        """Replace [x,y,z] in a robtarget declaration line."""
+        ...
+    
+    def _patch_move_speed_zone(self, line: str, speed: str, zone: str) -> str:
+        """Replace speed and zone tokens in a move instruction line."""
+        ...
+    
+    def _delete_line(self, line: str) -> str:
+        """Comment out a line: prepend '! [DELETED] '."""
+        ...
 ```
 
-## Data Flow
+**Why patching, not regeneration:**
+- Original .mod files contain comments, formatting, non-move statements (variable declarations, IF/ELSE logic, custom PROC structure, header comments) that the parser intentionally skips
+- Regenerating would lose all non-parsed content
+- Robot engineers need to see their original code structure preserved
+- `MoveInstruction.source_line` and `RobTarget.source_line` already track positions in original source
+- Apply patches bottom-to-top so earlier patches do not shift line numbers of later patches
 
-### File Load Flow
+**Handling position edits -- Offs() vs. named robtarget:**
+- If the original target was a named robtarget (e.g., `p10`), patch the robtarget declaration line
+- If the original target was `Offs(base, dx, dy, dz)`, update the offset values in the move instruction line
+- If the original target was inline `[[x,y,z],...]`, patch the inline bracket data
 
+### 5. MainWindow Layout Changes
+
+Current layout:
 ```
-User clicks File > Open
-    |
-    v
-QFileDialog returns .mod path
-    |
-    v
-AppController.load_file(path)
-    |
-    v
-RapidParser.parse_module(path) --> ParseResult
-    |                                  |
-    |                   (waypoints, segments, line maps, source text)
-    v
-ToolpathModel.set_data(parse_result)
-    |
-    +--[data_loaded signal]--> GLViewport.rebuild_scene()
-    |                              |
-    |                              v
-    |                          SceneRenderer builds VBOs from waypoints/segments
-    |                          Camera.fit_to_bounds(bounding_box)
-    |
-    +--[data_loaded signal]--> CodePanel.load_source(source_text)
-    |
-    +--[data_loaded signal]--> PlaybackStateMachine.load(num_waypoints)
++-------------------+----------------------+
+|  GL Widget (60%)  |  Code Panel (40%)    |
++-------------------+----------------------+
+|  Playback Toolbar                        |
++------------------------------------------+
 ```
 
-### Selection Flow (Bidirectional)
-
+Proposed layout:
 ```
-Direction 1: 3D Click -> Code Highlight
-==============================================
-Mouse click on GLViewport
-    |
-    v
-PickingEngine.pick_at(x, y) --> waypoint_index
-    |
-    v
-GLViewport emits point_picked(waypoint_index) signal
-    |
-    v
-AppController._on_point_picked(index)
-    |
-    v
-ToolpathModel.set_selection(index)
-    |
-    +--[selection_changed signal]--> GLViewport.highlight_point(index)
-    +--[selection_changed signal]--> CodePanel.highlight_line(waypoint_to_line[index])
-
-
-Direction 2: Code Click -> 3D Highlight
-==============================================
-Mouse click on CodePanel line
-    |
-    v
-CodePanel emits line_clicked(line_number) signal
-    |
-    v
-AppController._on_line_clicked(line_number)
-    |
-    v
-ToolpathModel.line_to_waypoint(line_number) --> waypoint_index (or None)
-    |
-    v
-ToolpathModel.set_selection(waypoint_index)
-    |
-    +--[selection_changed signal]--> GLViewport.highlight_point(index)
-    +--[selection_changed signal]--> CodePanel.highlight_line(line_number)
++-------------------+-----------+----------+
+|  GL Widget (55%)  | Property  | Code     |
+|                   | Panel     | Panel    |
+|                   | (20%)     | (25%)    |
++-------------------+-----------+----------+
+|  Playback Toolbar                        |
++------------------------------------------+
 ```
 
-### Playback Flow
+**Implementation:** The current QSplitter is 2-way horizontal. Change to 3-way by inserting PropertyPanel between GL widget and CodePanel. Splitter sizes: `[550, 200, 250]`.
 
+## Integration Points with Existing Modules
+
+### Integration 1: EditModel replaces PlaybackState as data owner
+
+**Current flow:**
 ```
-User clicks Play button
-    |
-    v
-PlaybackControls emits play_clicked signal
-    |
-    v
-AppController calls PlaybackStateMachine.play()
-    |
-    v
-QTimer starts ticking at configured interval
-    |
-    v (on each tick)
-PlaybackStateMachine._advance(+1)
-    |
-    v
-PlaybackStateMachine emits index_changed(new_index)
-    |
-    v
-AppController receives index_changed
-    |
-    v
-ToolpathModel.set_selection(new_index)
-    |
-    +--[selection_changed]--> GLViewport highlights current point, draws "traveled" path
-    +--[selection_changed]--> CodePanel scrolls to and highlights current line
+ParseResult.moves --> PlaybackState._moves (owns the list)
+                      PlaybackState._current_index (owns the index)
 ```
 
-### Key Data Flows
-
-1. **Parse -> Model (one-time):** Parser produces immutable ParseResult. Model stores it and builds internal index maps. This happens once per file load.
-2. **Selection sync (continuous):** Every selection change flows through ToolpathModel, which broadcasts to all views via signals. Views never communicate directly.
-3. **Playback tick (periodic):** QTimer drives index advancement. The playback FSM owns the timer; the model owns the current index. Playback just calls set_selection repeatedly.
-
-## Scaling Considerations
-
-| Concern | Small files (<100 points) | Medium files (100-5000 points) | Large files (5000+ points) |
-|---------|---------------------------|-------------------------------|---------------------------|
-| Parse time | Negligible | Negligible (regex is fast) | Still fast (<1s), but validate |
-| VBO rebuild | Instant | Instant | Batch into single VBO per type |
-| Picking render | No concern | No concern | May need spatial culling |
-| Code panel | No concern | No concern | Lazy line rendering |
-
-### Scaling Priorities
-
-1. **First bottleneck:** VBO construction on large files. Mitigation: batch all path line segments into one VBO (not one draw call per segment). Use `GL_LINES` or `GL_LINE_STRIP` with index buffers.
-2. **Second bottleneck:** Picking pass on files with 10,000+ points. Mitigation: only render pick-able points (not lines) in the pick pass. Increase marker size slightly for easier clicking.
-
-## Anti-Patterns
-
-### Anti-Pattern 1: OpenGL Calls Outside GLViewport
-
-**What people do:** Scatter glBindBuffer, glDrawArrays calls across controller or model code.
-**Why it's wrong:** OpenGL calls require the correct GL context to be current. Calling GL outside the widget's paintGL chain causes silent failures or crashes. Makes code impossible to test without a live window.
-**Do this instead:** All GL calls live inside GLViewport, SceneRenderer, PickingEngine, or Camera. The model provides plain Python data (numpy arrays). The renderer consumes it.
-
-### Anti-Pattern 2: Direct View-to-View Communication
-
-**What people do:** GLViewport directly calls CodePanel.highlight_line() when a point is picked.
-**Why it's wrong:** Creates tight coupling. Adding a third view (e.g., properties panel) requires modifying the GL viewport. Breaks testability.
-**Do this instead:** All cross-view communication goes through ToolpathModel signals. Views only know about the model, never about each other.
-
-### Anti-Pattern 3: Parsing Inside the UI Thread Without Feedback
-
-**What people do:** Call the parser synchronously in the main thread, freezing the UI.
-**Why it's wrong:** For large .mod files, parsing could take noticeable time. The UI becomes unresponsive.
-**Do this instead:** For v1 with typical file sizes (<5000 lines), synchronous parsing is acceptable. Add a QApplication.processEvents() call or move to QThread only if profiling shows >200ms parse times.
-
-### Anti-Pattern 4: Storing GL State in the Model
-
-**What people do:** Put VBO IDs, shader programs, or texture handles in the ToolpathModel.
-**Why it's wrong:** Mixes data ownership with rendering state. Model cannot be tested without OpenGL. Breaks if GL context is recreated.
-**Do this instead:** Model stores numpy arrays and plain Python data. Renderer creates and owns all GL resources, rebuilding them when model data changes.
-
-### Anti-Pattern 5: Monolithic paintGL
-
-**What people do:** Put all rendering code (grid, axes, paths, points, selection highlight) in a single 200-line paintGL method.
-**Why it's wrong:** Impossible to maintain, test, or extend. Adding new visual elements means editing one massive function.
-**Do this instead:** SceneRenderer with separate draw methods: draw_grid(), draw_axes(), draw_paths(), draw_waypoints(), draw_selection(). Each method is independent and testable.
-
-## Integration Points
-
-### Internal Boundaries
-
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| Parser -> Model | Function call returning ParseResult dataclass | Parser is stateless. No signals. Called once per file load. |
-| Model -> GLViewport | Qt signals (data_loaded, selection_changed) | GLViewport reads numpy arrays from model on signal receipt |
-| Model -> CodePanel | Qt signals (data_loaded, selection_changed) | CodePanel reads source text and line numbers from model |
-| Model -> PlaybackFSM | Direct method calls (load, play, step) | FSM is owned by model or sits alongside it |
-| PlaybackFSM -> Model | Signal (index_changed) -> model.set_selection() | Timer-driven index advancement |
-| GLViewport -> Controller | Signal (point_picked) | Controller translates to model.set_selection() |
-| CodePanel -> Controller | Signal (line_clicked) | Controller looks up line->waypoint mapping |
-
-### RAPID Parser Internal Design
-
-The parser handles ABB RAPID .mod files with this structure:
-
+**New flow:**
 ```
-MODULE ModuleName
-    CONST robtarget p10 := [[x,y,z],[q1,q2,q3,q4],[cf1,cf4,cf6,cfx],[eax_a,...eax_f]];
-    PERS robtarget p20 := [[x,y,z],[q1,q2,q3,q4],[cf1,cf4,cf6,cfx],[eax_a,...eax_f]];
-
-    PROC main()
-        MoveJ p10, v1000, z50, tool0;
-        MoveL p20, v100, fine, tool0;
-        MoveL Offs(p10, 0, 100, 0), v100, z10, tool0;
-        MoveC p_circle, p_end, v100, z10, tool0;
-    ENDPROC
-ENDMODULE
+ParseResult --> EditModel._moves (owns the editable data)
+                    |
+                    v
+                EditModel.active_moves() --> PlaybackState._moves (receives filtered list)
+                                             PlaybackState._current_index (still owns index)
 ```
 
-Parser strategy (regex-based, two-pass):
+PlaybackState does NOT change structurally. It still receives a `list[MoveInstruction]` via `set_moves()`. The difference is that MainWindow calls `set_moves(edit_model.active_moves())` instead of `set_moves(parse_result.moves)`. PlaybackState only tracks the index.
 
-1. **Pass 1 -- Data declarations:** Scan all lines for `CONST|PERS|VAR` + `robtarget` + name + `:=` + bracketed data. Build a name->WayPoint dictionary. Parse the nested bracket structure `[[x,y,z],[q1,q2,q3,q4],...]`.
-2. **Pass 2 -- Move instructions:** Scan all lines within PROC blocks for `MoveL|MoveJ|MoveC|MoveAbsJ`. Extract the target reference (variable name or inline `Offs()` expression), speed, zone, tool. Resolve target name to a WayPoint from the dictionary. For `Offs()`, compute the offset position.
-3. **Output:** Return ParseResult with ordered waypoints list (in execution order), path segments, and bidirectional line mappings.
+### Integration 2: EditModel <-> geometry_builder (no changes needed)
 
-Key parsing challenges:
-- **Inline Offs():** `MoveL Offs(p10, 0, 100, 0)` means "p10 but shifted by (0, 100, 0)". Must evaluate at parse time.
-- **MoveC (circular):** Takes two robtargets (circle point + end point). Need to handle the extra argument.
-- **MoveAbsJ:** Uses jointtarget, not robtarget. For v1, can skip or represent as a special "unknown position" waypoint.
-- **Multi-PROC modules:** A module may contain multiple procedures. v1 can parse all PROCs sequentially or let the user select which PROC to visualize.
+The existing `build_geometry(result: ParseResult) -> GeometryBuffers` API is unchanged. EditModel produces a compatible ParseResult via `to_parse_result()`. This is the key architectural win: the entire rendering pipeline is reused without modification.
 
-## Build Order (Dependencies)
+### Integration 3: ToolpathGLWidget selection enhancement
 
-Build order is dictated by data dependencies. Components lower in the list depend on components above.
+**Current:** `waypoint_clicked` signal emits `int` (single index). Used for playback navigation.
 
-```
-Phase 1: Foundation (no dependencies)
-  1. parser/tokens.py         -- Data classes, no external deps
-  2. parser/patterns.py       -- Regex patterns, no external deps
-  3. utils/math_utils.py      -- Quaternion math, numpy only
+**Addition for editing:**
+- Ctrl+click: toggle selection (add/remove from selected set)
+- Plain click: replace selection (single select, same as current behavior)
+- Shift+click: range select (optional, lower priority)
 
-Phase 2: Parser (depends on Phase 1)
-  4. parser/rapid_parser.py   -- Uses tokens + patterns, testable standalone
-
-Phase 3: Model (depends on Phase 2 output types)
-  5. model/toolpath_model.py  -- Uses tokens, emits Qt signals
-  6. model/playback.py        -- Uses QTimer, emits Qt signals
-
-Phase 4: Rendering (depends on Phase 3 for data)
-  7. viewer/camera.py         -- Math only, no model dependency
-  8. viewer/scene_renderer.py -- Reads from ToolpathModel
-  9. viewer/gl_viewport.py    -- Composes Camera + SceneRenderer
-  10. viewer/picking.py        -- Extends GLViewport render pass
-
-Phase 5: UI Shell (depends on Phase 4 for GLViewport widget)
-  11. ui/code_panel.py         -- QPlainTextEdit with highlight logic
-  12. ui/playback_controls.py  -- QToolBar with buttons
-  13. ui/main_window.py        -- Composes all UI widgets
-
-Phase 6: Integration (depends on everything)
-  14. controller.py            -- Wires model <-> views
-  15. main.py                  -- Application entry point
+Implementation in `mouseReleaseEvent`:
+```python
+# Check Qt.KeyboardModifier.ControlModifier
+if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+    self.waypoint_ctrl_clicked.emit(picked_index)  # new signal
+else:
+    self.waypoint_clicked.emit(picked_index)  # existing signal
 ```
 
-**Rationale:** The parser can be built and fully tested with zero UI. The model can be tested with mock data. The renderer needs the model's data types but not the parser. The UI shell needs the GL widget. The controller is last because it wires everything together. This ordering minimizes blocked work and enables testing at every phase.
+MainWindow routes:
+- `waypoint_clicked` -> `edit_model.select([index])` + `playback_state.set_index(index)`
+- `waypoint_ctrl_clicked` -> `edit_model.toggle_select(index)`
+
+### Integration 4: PropertyPanel <-> EditModel (bidirectional)
+
+```
+EditModel.selection_changed --> PropertyPanel.update_display()
+PropertyPanel.offset_applied --> EditController.apply_offset() --> EditModel.modify_position()
+PropertyPanel.speed_changed  --> EditController.change_speed()  --> EditModel.set_speed()
+PropertyPanel.zone_changed   --> EditController.change_zone()   --> EditModel.set_zone()
+PropertyPanel.laser_toggled  --> EditController.toggle_laser()  --> EditModel.set_laser()
+PropertyPanel.delete_requested --> EditController.delete_moves() --> EditModel.delete_move()
+```
+
+### Integration 5: ModWriter uses original source_text + EditModel diffs
+
+```
+ParseResult.source_text (original file)  +  EditModel._moves (with is_modified flags)
+    |                                            |
+    v                                            v
+ModWriter._build_patches() --> list of (line_number, old_text, new_text)
+    |
+    v (apply patches bottom-to-top)
+Patched source text --> write to file
+```
+
+### Integration 6: MainWindow menu for Save As
+
+New menu action in `_setup_menu()`:
+```python
+save_as_action = QAction("Save &As...", self)
+save_as_action.setShortcut("Ctrl+Shift+S")
+save_as_action.triggered.connect(self._save_as)
+# Disabled until a file is loaded and EditModel exists
+save_as_action.setEnabled(False)
+```
+
+`_save_as()` calls `QFileDialog.getSaveFileName()` then `ModWriter().export(self._edit_model, path)`.
+
+**Always "Save As", never overwrite.** Robot engineers must keep the original file intact. The original .mod may be on a network share connected to a live robot controller.
+
+## Data Flow Changes Summary
+
+### v1.0 Read-Only Flow (unchanged, still works)
+```
+.mod --> parse_module() --> ParseResult --> build_geometry() --> GL buffers
+                                       \-> PlaybackState (index)
+                                       \-> CodePanel (source_text)
+```
+
+### v1.1 Read-Write Flow (new)
+```
+.mod --> parse_module() --> ParseResult --> EditModel (mutable copy)
+                                               |
+                          +--------------------+-----------------------+
+                          |                    |                       |
+                    PropertyPanel        PlaybackState           EditController
+                    (inspect/edit)      (index tracking)        (command dispatch)
+                          |                                           |
+                          +---------> EditModel mutation <------------+
+                                           |
+                                     to_parse_result()
+                                           |
+                                     build_geometry()
+                                           |
+                                     update_scene() --> GL buffers
+                                           
+                          EditModel + source_text --> ModWriter --> new .mod file
+```
+
+## Patterns to Follow
+
+### Pattern 1: Immutable Core, Mutable Wrapper
+Keep parser output (`MoveInstruction`, `RobTarget`) frozen. Wrap with mutable `EditableMove` for editing. Parser correctness is proven; editing bugs must not corrupt the parse layer.
+
+### Pattern 2: Signal-Driven UI Updates
+All state changes emit Qt signals. UI components react to signals, never poll. Existing codebase uses this pattern consistently (`PlaybackState.current_changed`, `waypoint_clicked`).
+
+### Pattern 3: Source Patching for Export
+Modify original .mod source text at known line positions rather than regenerating. Preserves comments, formatting, non-move code. Apply patches bottom-to-top to maintain line number validity.
+
+### Pattern 4: Full Scene Rebuild on Edit
+Call `build_geometry()` + `update_scene()` after every edit. Toolpath files have hundreds to low-thousands of moves; full rebuild is <50ms. Incremental VBO patching adds complexity for negligible gain.
+
+### Pattern 5: Controller Mediates All Mutations
+PropertyPanel never calls EditModel directly. All mutations go through EditController, which handles validation, batching, and scene rebuild triggering. This keeps the door open for undo/redo.
+
+## Anti-Patterns to Avoid
+
+### Anti-Pattern 1: Making Parser Dataclasses Mutable
+Removing `frozen=True` from `MoveInstruction` or `RobTarget` would break parser tests, hash-based `targets` dict lookups, and risk editing bugs corrupting parse state. Use `EditableMove` wrapper instead.
+
+### Anti-Pattern 2: In-Place Source Text Mutation During Editing
+Mutating `source_text` string as edits happen (before export) causes line numbers to shift after insertions/deletions, invalidating all `source_line` references. Collect patches and apply at export time only.
+
+### Anti-Pattern 3: Dual Source of Truth for Move List
+Both `PlaybackState._moves` and `EditModel._moves` holding separate copies leads to desynchronization on edits. EditModel is the single source; PlaybackState receives filtered lists from it.
+
+### Anti-Pattern 4: Direct GL Widget Mutation from PropertyPanel
+PropertyPanel calling `gl_widget.update_scene()` directly bypasses EditModel, loses change tracking, and breaks undo possibility. Always go through EditController.
+
+### Anti-Pattern 5: Absolute Position Editing in UI
+Exposing raw X/Y/Z input fields for absolute position invites dangerous typos. Robot engineers think in offsets. Use offset-only input with clear "Apply" action.
+
+## Suggested Build Order (Phase Dependencies)
+
+```
+Phase 1: EditModel + EditableMove           [NO dependencies on new code]
+  - Unit-testable in isolation
+  - Depends only on existing parser tokens
+  - Deliverables: edit_model.py with full test coverage
+
+Phase 2: PropertyPanel (read-only first)     [Depends on Phase 1]
+  - Display selected waypoint properties
+  - Wire to EditModel.selection_changed
+  - MainWindow layout change: 3-way splitter
+  - Deliverables: property_panel.py (display only), main_window.py changes
+
+Phase 3: Editing + Selection                 [Depends on Phases 1 & 2]
+  - EditController with offset/speed/zone/laser/delete commands
+  - PropertyPanel edit widgets (offset input, speed/zone combos, delete button)
+  - Multi-select in ToolpathGLWidget (Ctrl+click)
+  - Deliverables: edit_controller.py, property_panel.py (full), gl_widget changes
+
+Phase 4: ModWriter (export)                  [Depends on Phase 1]
+  - Source text patching engine
+  - Save As menu action in MainWindow
+  - Can be built in parallel with Phase 3 (only depends on EditModel)
+  - Deliverables: mod_writer.py, main_window.py Save As action
+```
+
+**Phase ordering rationale:**
+1. EditModel first because PropertyPanel, EditController, and ModWriter all depend on it
+2. PropertyPanel read-only validates the EditModel-to-UI signal wiring without mutation complexity
+3. Editing features need both EditModel and PropertyPanel in place
+4. Export only reads final state; no other component depends on it. Can parallelize with Phase 3.
+
+## Scalability Considerations
+
+| Concern | 200 moves (typical) | 5000 moves (large) | Mitigation |
+|---------|---------------------|---------------------|------------|
+| Full rebuild time | <10ms | ~50ms | Acceptable. No incremental updates needed. |
+| EditableMove memory | ~50KB | ~1.2MB | Negligible |
+| Source patching (export) | <5ms | ~20ms | Line-by-line scan is fast for text |
+| Multi-select highlight | Trivial | Build batch highlight VBO | Upload all selected positions in single VBO, not one-at-a-time |
 
 ## Sources
 
-- [500 Lines - A 3D Modeller (Architecture of OpenGL Scene Graph + Picking)](https://aosabook.org/en/500L/a-3d-modeller.html)
-- [Qt QOpenGLWidget Documentation](https://doc.qt.io/qtforpython-6/PySide6/QtOpenGLWidgets/QOpenGLWidget.html)
-- [PyQt6 ModelView Architecture Tutorial](https://www.pythonguis.com/tutorials/pyqt6-modelview-architecture/)
-- [Clean Architecture for PyQt GUI using MVP Pattern](https://medium.com/@mark_huber/a-clean-architecture-for-a-pyqt-gui-using-the-mvp-pattern-78ecbc8321c0)
-- [OpenGL Ray Casting for Mouse Picking](https://antongerdelan.net/opengl/raycasting.html)
-- [ABB RAPID Technical Reference Manual](https://library.e.abb.com/public/b227fcd260204c4dbeb8a58f8002fe64/Rapid_instructions.pdf)
-- [ABB RAPID Introduction to RAPID](http://rovart.cimr.pub.ro/docs/OpIntroRAPID.pdf)
-- [Python transitions (state machine library)](https://github.com/pytransitions/transitions)
+- Direct codebase analysis of all existing modules (HIGH confidence)
+- Qt6 signal/slot pattern: consistent with existing codebase patterns (HIGH confidence)
+- `dataclasses.replace()` for creating modified frozen instances: Python stdlib (HIGH confidence)
+- Source patching approach: standard technique for editors that must preserve formatting (HIGH confidence)
 
 ---
-*Architecture research for: ABB RAPID Toolpath Viewer (Python + PyQt6 + PyOpenGL)*
-*Researched: 2026-03-30*
+*Architecture research for: ABB RAPID Toolpath Viewer v1.1 Toolpath Editing*
+*Researched: 2026-04-01*

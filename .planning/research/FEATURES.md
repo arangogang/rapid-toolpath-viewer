@@ -1,207 +1,126 @@
-# Feature Research
+# Feature Landscape: Toolpath Editing (Milestone v1.1)
 
-**Domain:** Robot Toolpath Visualization / RAPID Code Verification
-**Researched:** 2026-03-30
+**Domain:** Toolpath editor for ABB RAPID robot programs (.mod files)
+**Researched:** 2026-04-01
 **Confidence:** MEDIUM-HIGH
+**Context:** Extending an existing read-only toolpath viewer into an editing tool. The viewer already has 3D rendering, arcball camera, playback, code panel with syntax highlighting, bidirectional click-to-code linking, and PROC filtering.
 
-## Feature Landscape
+## Table Stakes
 
-### Table Stakes (Users Expect These)
-
-Features users assume exist. Missing these = product feels incomplete or unusable.
+Features users expect when a tool claims "toolpath editing." Missing any of these makes the product feel broken or incomplete for a robot engineer doing pre-upload verification and correction.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| .mod file loading via file dialog | Entry point to the app; without it nothing works | LOW | Standard file dialog, drag-and-drop is a nice bonus |
-| RAPID movement instruction parsing (MoveL, MoveJ, MoveC, MoveAbsJ) | Core data extraction; the 4 move types cover 95%+ of real programs | MEDIUM | MoveC requires CirPoint intermediate target handling; MoveAbsJ has joint-space-only coords |
-| robtarget / jointtarget data parsing | Positions are the raw material for visualization | MEDIUM | Quaternion orientation (q1-q4), config data (cf1-cf6), external axes |
-| 3D path rendering with move-type distinction | Users need to see linear vs joint moves at a glance; every competitor does this | MEDIUM | MoveL=solid line, MoveJ=dashed/different color, MoveC=arc. Color-coding is standard in G-code viewers |
-| Waypoint markers in 3D view | Users need to identify individual positions; dots or small axes at each robtarget | LOW | Small spheres or cross markers at each target position |
-| Mouse orbit/zoom/pan camera controls | Standard 3D navigation; users expect this from any 3D viewer | MEDIUM | Trackball or arcball rotation, scroll zoom, middle-click pan. Must feel responsive |
-| Coordinate axes indicator | Spatial orientation reference; users need to know which way is X/Y/Z | LOW | Standard XYZ axis widget in corner of viewport |
-| Step-through playback (forward/back) | Lets user walk through program instruction by instruction; core verification workflow | MEDIUM | Step forward, step back, highlight current segment |
-| Code-to-3D bidirectional linking | The core value proposition per PROJECT.md; click a point to see code, click code to see point | HIGH | This is the killer feature that ties the viewer together. NC Viewer and G-code tools do line-by-line linking |
-| Syntax-highlighted RAPID code panel | Users need to read the code alongside the 3D view; plain text is insufficient | MEDIUM | Keyword highlighting for RAPID (MoveL, MoveJ, robtarget, PROC, etc.) |
+| Single waypoint selection in 3D | Every editor needs selection before action. Already partially built (ray-cast picking exists for playback highlighting). | Low | Extend existing `waypoint_clicked` signal. Need visual distinction between "playback highlight" and "edit selection." |
+| Waypoint info panel | Engineers must see coordinates, speed, zone, tool, wobj, laser state at a glance. RobotStudio and RoboDK both show target properties on selection. | Low | Read-only panel displaying MoveInstruction + RobTarget fields. Dock widget or side panel below the code panel. |
+| Coordinate modification (X, Y, Z offset) | The most common edit: adjusting waypoint position. ABB forum threads confirm this is the #1 request for simple program editors. Must support both absolute coordinate entry and relative offset. | Medium | Requires mutable data model (current tokens are frozen dataclasses). "Continuous add" means applying same offset repeatedly to shift a group of points. |
+| Speed/zone property modification | Second most common edit after position. Engineers routinely need to change v100 to v500 or zone z10 to fine. | Low | Dropdown or text input for speed/zone fields. Changes propagate to in-memory MoveInstruction. |
+| Laser on/off toggle | Domain-specific table stake for this application (laser welding/cutting). Engineers need to toggle SetDO state for segments. | Low | Toggle button in info panel. Must insert/modify SetDO statement in source. |
+| Save As / Export modified .mod | Without export, editing is pointless. "Save As" (not overwrite) is safer for robot programs -- engineers keep the original. | Medium | Must regenerate valid RAPID source text from modified data model. Line-level text replacement strategy recommended. |
+| Undo/Redo | Universal expectation for any editor. Qt provides QUndoStack (Command pattern) specifically for this. Without undo, users fear making changes. | Medium | QUndoStack with QUndoCommand subclasses for each edit type. Must be wired from the start -- retrofitting undo is extremely painful. |
+| Delete waypoint | Engineers remove unnecessary or erroneous points. Must handle the "connect or disconnect" question: after deleting point B from A-B-C, should A connect to C or leave a gap? | Medium | Requires removing MoveInstruction from list, optionally adjusting adjacent segment connectivity, and updating all indices. |
 
-### Differentiators (Competitive Advantage)
+## Differentiators
 
-Features that set this tool apart from RobotStudio and general-purpose OLP software. The key differentiator is **speed and simplicity** -- open a .mod file and instantly see the path, no robot model setup, no project creation, no license headaches.
+Features that set the product apart from just opening the file in a text editor. Not expected, but significantly increase value.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Instant file-to-visualization (zero config) | RobotStudio requires creating a station, importing robot model, setting up controller. This tool: open file, see path. 2 seconds vs 2 minutes | LOW | This is an architecture choice, not a feature to build -- keep the app simple |
-| TCP orientation visualization at waypoints | Show tool orientation as small coordinate frames at each point; helps catch orientation errors that are invisible in position-only views | MEDIUM | Render small RGB axis triads from quaternion data. Critical for welding/painting validation |
-| Speed/zone data overlay | Show speeddata and zonedata values alongside the path; users catch "why is this segment slow?" or "why isn't this a fine point?" | MEDIUM | Text labels or color gradient mapped to speed values |
-| Playback animation with speed control | Animate a marker along the path at adjustable speed (0.25x to 10x); NC Viewer-style playback | MEDIUM | Smooth interpolation along segments, speed slider, play/pause/stop |
-| Multi-procedure support | Real .mod files contain multiple PROCs; users need to select which procedure to visualize or see all | MEDIUM | Dropdown or list to select active PROC; highlight only that procedure's path |
-| Path statistics panel | Total path length, point count, move type breakdown, estimated cycle time (from speed data) | LOW | Calculated from parsed data; useful for quick validation |
-| Search/filter in code panel | Find specific targets or instructions in large programs (500+ lines) | LOW | Standard text search in the code panel |
-| Wobj (work object) frame visualization | Show the coordinate frame of the active work object; many programs use non-default wobjs | MEDIUM | Parse WobjData, render as a larger coordinate frame. Transforms all robtargets into the correct frame |
-| Export path as CSV/point cloud | Let users export parsed waypoints for use in other tools or spreadsheets | LOW | Simple data export from already-parsed structures |
+| Multi-select waypoints | Select 2+ waypoints and batch-modify (offset all, change speed for all). Saves massive time vs. one-by-one editing. Professional CAM tools (Mastercam, BobCAD) all support this. | Medium | Shift+click or drag-box selection. Batch operations on selected set. |
+| Batch offset with preview | Apply X/Y/Z offset to selection, see the result in 3D before confirming. "Continuous add" from requirements fits here -- apply same delta repeatedly. | Medium | Ghost/preview geometry showing proposed new positions. Confirm applies the change. |
+| Real-time 3D update on edit | When user changes coordinate values in the info panel, the 3D view updates live (not after clicking "Apply"). | Low | Bind spinbox/input valueChanged signals to geometry rebuild. Must be performant -- partial VBO update, not full rebuild. |
+| Visual diff: original vs modified | Show original path as faded/ghost overlay, modified path as solid. Engineers can visually verify their edits are correct. | Medium | Render original geometry with alpha blending alongside current geometry. Toggle on/off. |
+| Dirty state indicator | Title bar shows "*" when unsaved changes exist. Prompt "Save changes?" on close. Standard editor behavior. | Low | Track modified flag, connect to QUndoStack cleanChanged signal. |
+| Insert waypoint | Add a new waypoint between two existing ones (interpolated position). Less common than delete but valuable for path refinement. | High | Requires creating new robtarget declaration + new MoveInstruction, inserting at correct position in source text. Complex source regeneration. |
+| Coordinate system display in info panel | Show coordinates in both world frame and active wobj frame. Engineers think in workobject coordinates. | Low | Transform pos by inverse wobj if wobj is defined. Display both. |
 
-### Anti-Features (Commonly Requested, Often Problematic)
+## Anti-Features
 
-Features that seem good but are wrong for v1 of a lightweight RAPID viewer.
+Features to explicitly NOT build in v1.1. Each has a clear reason for exclusion.
 
-| Feature | Why Requested | Why Problematic | Alternative |
-|---------|---------------|-----------------|-------------|
-| Robot arm 3D model / kinematic simulation | "I want to see the robot move" | Requires robot model library, DH parameters, IK/FK solver, joint limits, collision meshes. Massive complexity for marginal value in a code verifier | TCP path visualization with orientation frames gives 90% of the validation value at 5% of the cost. Users who need full sim already have RobotStudio |
-| RAPID code editing | "Let me fix errors right here" | Turns a viewer into an IDE; undo/redo, syntax validation, file saving with backup, module structure integrity. Feature creep | Open-in-external-editor button. The tool is a viewer, not an editor |
-| Collision detection | "Can the robot reach this?" | Requires robot model, cell geometry, physics engine. Full OLP territory | Out of scope entirely. This tool validates path intent, not physical feasibility |
-| Real-time robot connection | "Stream positions from the real robot" | Network protocol complexity (EGM/RAPID server), safety implications, latency handling | Completely different product category. Stay offline |
-| Multi-file project support (.pgf parsing) | "Load the whole project structure" | ABB project files reference multiple modules, system modules, EIO config. Parsing the full project structure is a rabbit hole | Support loading individual .mod files. Add multi-module loading in v1.x if needed |
-| Inverse kinematics / reachability analysis | "Can the robot reach point X?" | Requires specific robot model kinematics, joint limits database | Show raw position coordinates; let users verify reachability in RobotStudio |
-| CAD model import (STEP/IGES) | "Show my workpiece alongside the path" | 3D CAD parsing is a major undertaking; format complexity, tessellation, positioning | Maybe v2+ with simple STL import only. Not v1 |
+| Anti-Feature | Why Avoid | What to Do Instead |
+|--------------|-----------|-------------------|
+| In-place RAPID code editing (text editor mode) | Scope creep into IDE territory. Parsing modified RAPID text back into the data model is error-prone. The code panel is a viewer, not an editor. RobotStudio already does this. | Provide structured editing via info panel UI controls. The code panel stays read-only but updates to reflect changes. |
+| Drag waypoints in 3D (gizmo/handle manipulation) | 3D gizmo interaction (translate handles, rotation rings) requires complex mouse-ray intersection math, occlusion handling, and axis constraint logic. High effort for v1.1. | Use numeric input fields for coordinate changes. Precise values are what robot engineers actually need (not approximate dragging). |
+| Robot arm visualization / inverse kinematics | Massive scope. Requires robot model loading, DH parameter chains, joint limit checking. This is RobotStudio territory. | Show TCP path only (current approach). Engineers validate path geometry, not joint configurations, in this tool. |
+| Collision detection | Requires workpiece CAD import, spatial indexing, mesh intersection. Way beyond scope. | Out of scope entirely. Engineers use RobotStudio for collision checks. |
+| Path optimization / smoothing | Automatic modification of paths is dangerous for robot programs. Engineers want explicit control. | Provide manual editing tools. Never auto-modify without explicit user action. |
+| Multi-file editing (.pgf project support) | .pgf projects reference multiple .mod files. Supporting project-level operations is a separate milestone. | Single .mod file editing only. Load one file, edit, save. |
+| Waypoint reordering (drag to rearrange sequence) | Reordering moves changes program semantics (laser state, approach angles). Very error-prone without simulation. | Delete and re-insert if truly needed. Keep sequence integrity. |
+| Overwrite save (Save, not Save As) | Robot programs going to production controllers should not be silently overwritten. "Save As" forces the engineer to be explicit about creating a modified copy. | Only provide "Save As" / Export. The original file is preserved. |
 
 ## Feature Dependencies
 
 ```
-[.mod File Loading]
-    +--requires--> [RAPID Parser (move instructions)]
-                       +--requires--> [robtarget/jointtarget Data Parsing]
-                       +--enables---> [3D Path Rendering]
-                       +--enables---> [Code Panel with Syntax Highlight]
+Waypoint Selection ──> Info Panel (must select before viewing info)
+                   ──> Coordinate Modification (must select before editing)
+                   ──> Property Modification (must select before editing)
+                   ──> Delete Waypoint (must select before deleting)
 
-[3D Path Rendering]
-    +--requires--> [Camera Controls (orbit/zoom/pan)]
-    +--requires--> [Coordinate Axes Indicator]
-    +--enables---> [Waypoint Markers]
-    +--enables---> [TCP Orientation Visualization]
-    +--enables---> [Move-Type Color Coding]
+Mutable Data Model ──> Coordinate Modification
+                   ──> Property Modification
+                   ──> Delete Waypoint
+                   ──> All editing operations
 
-[Step-Through Playback]
-    +--requires--> [3D Path Rendering]
-    +--requires--> [Code Panel]
-    +--enables---> [Code-to-3D Bidirectional Linking]
-    +--enables---> [Playback Animation with Speed Control]
+Undo/Redo (QUndoStack) ──> Coordinate Modification (wrap in QUndoCommand)
+                        ──> Property Modification (wrap in QUndoCommand)
+                        ──> Delete Waypoint (wrap in QUndoCommand)
 
-[Code-to-3D Bidirectional Linking]
-    +--requires--> [Step-Through Playback]
-    +--requires--> [Code Panel with Syntax Highlight]
-    +--requires--> [Waypoint Markers]
+Source Regeneration ──> Save As / Export
+                   <── All edit operations (must track changes for regeneration)
 
-[Multi-Procedure Support]
-    +--requires--> [RAPID Parser]
-    +--enhances--> [Code Panel]
-    +--enhances--> [3D Path Rendering]
-
-[Speed/Zone Data Overlay]
-    +--requires--> [RAPID Parser (speeddata/zonedata extraction)]
-    +--enhances--> [3D Path Rendering]
-
-[Wobj Frame Visualization]
-    +--requires--> [robtarget Data Parsing]
-    +--requires--> [3D Path Rendering]
-
-[Path Statistics]
-    +--requires--> [RAPID Parser]
-    +--independent of--> [3D rendering (can be calculated without display)]
+Coordinate Modification ──> Batch Offset (extends single-point to multi)
+Multi-Select ──> Batch Offset (requires selection of multiple points)
 ```
 
-### Dependency Notes
+Dependency chain summary:
+1. **Mutable data model** must come first (current frozen dataclasses block all editing)
+2. **Selection** and **undo infrastructure** can be built in parallel
+3. **Individual edits** (coordinate, property, delete) depend on both selection and mutable model
+4. **Save As** depends on source regeneration, which depends on all edit types being defined
+5. **Multi-select and batch operations** extend single-edit features
 
-- **Code-to-3D Linking requires Step-Through + Code Panel + Waypoint Markers:** All three must exist before bidirectional navigation is possible. This is the most dependency-heavy feature and should be the last table-stakes item built.
-- **3D Path Rendering requires Camera Controls:** Without orbit/zoom/pan, the 3D view is unusable. Camera controls must be implemented alongside or before path rendering.
-- **Multi-Procedure Support requires RAPID Parser:** The parser must understand PROC boundaries, not just individual move instructions. This should be designed into the parser from the start, not retrofitted.
-- **Wobj Frame Visualization requires robtarget parsing with WobjData:** If the parser ignores the wobj argument in Move instructions, all positions will be in the wrong coordinate frame for non-default work objects. Design the parser to capture wobj references early.
+## MVP Recommendation
 
-## MVP Definition
+Prioritize (in build order):
 
-### Launch With (v1)
+1. **Mutable data model** -- Unfreeze or wrap tokens for editing. Foundation for everything.
+2. **Undo/Redo infrastructure** (QUndoStack) -- Wire early because retrofitting is painful. Every edit operation becomes a QUndoCommand from the start.
+3. **Waypoint selection** (extend existing picking) -- Low effort, already partially built.
+4. **Info panel** (read-only first, then editable) -- Shows immediate value, builds toward editing.
+5. **Coordinate modification** with undo -- The highest-value edit operation.
+6. **Speed/zone/laser modification** with undo -- Low complexity, high value.
+7. **Delete waypoint** with connect/disconnect option -- Medium complexity.
+8. **Save As / Export** -- Makes all edits permanent. Ship this as the capstone.
 
-Minimum viable product -- what's needed for a robot engineer to open a .mod file and verify their toolpath.
+Defer to v1.2:
+- **Multi-select and batch operations**: Valuable but adds significant UI complexity. Single-point editing covers 80% of use cases.
+- **Insert waypoint**: High complexity (new robtarget generation, source insertion). Delete covers immediate needs.
+- **Visual diff (original vs modified)**: Nice to have, not blocking.
+- **3D drag gizmos**: High effort, low precision. Engineers prefer numeric input.
 
-- [ ] .mod file loading (file dialog) -- entry point
-- [ ] RAPID parser: MoveL, MoveJ, MoveC, MoveAbsJ instruction extraction -- core data
-- [ ] RAPID parser: robtarget and jointtarget data type extraction -- position data
-- [ ] 3D path rendering with move-type color distinction -- visual output
-- [ ] Waypoint markers at each robtarget -- position identification
-- [ ] Mouse camera controls (orbit, zoom, pan) -- navigation
-- [ ] XYZ coordinate axes indicator -- spatial reference
-- [ ] Step forward/back through waypoints -- sequential verification
-- [ ] RAPID code panel with syntax highlighting -- code context
-- [ ] Bidirectional code-to-3D linking -- the core value proposition
+## Source Regeneration Strategy Note
 
-### Add After Validation (v1.x)
+The hardest technical problem in this milestone is not the UI -- it is **regenerating valid .mod source text** from modified data. Two approaches:
 
-Features to add once core viewer is working and users provide feedback.
+1. **Line-level text replacement**: Find the source line of the modified robtarget/MoveInstruction, replace just that line's values using regex. Preserves formatting, comments, and unmodified code. Fragile if source structure is unusual but matches how the parser already tracks `source_line` for every token.
 
-- [ ] TCP orientation frames at waypoints -- when users report orientation validation needs
-- [ ] Playback animation with speed control -- when step-through feels too slow for long programs
-- [ ] Speed/zone data text overlay -- when users ask "why is this segment configured this way?"
-- [ ] Multi-procedure support (PROC selection) -- when users load files with multiple routines
-- [ ] Path statistics panel (length, point count, move breakdown) -- low effort, high info value
-- [ ] Search in code panel -- when files exceed ~200 lines and scrolling is painful
-- [ ] Drag-and-drop file loading -- convenience enhancement
+2. **Full regeneration from AST**: Rebuild the entire .mod file from the parsed data model. Clean output but loses comments, formatting, and any RAPID code the parser does not understand.
 
-### Future Consideration (v2+)
-
-Features to defer until the core tool has proven its value.
-
-- [ ] Wobj frame visualization and coordinate transform -- complex but important for multi-wobj programs
-- [ ] Export path as CSV/point cloud -- for integration with other tools
-- [ ] Simple STL workpiece overlay -- for spatial context without full CAD support
-- [ ] Multi-module loading (load several .mod files into one view) -- for programs split across modules
-- [ ] Configuration file (.cfg) parsing for tool definitions -- richer metadata
-
-## Feature Prioritization Matrix
-
-| Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| .mod file loading | HIGH | LOW | P1 |
-| RAPID move instruction parsing | HIGH | MEDIUM | P1 |
-| robtarget/jointtarget parsing | HIGH | MEDIUM | P1 |
-| 3D path rendering (color-coded) | HIGH | MEDIUM | P1 |
-| Waypoint markers | HIGH | LOW | P1 |
-| Camera controls (orbit/zoom/pan) | HIGH | MEDIUM | P1 |
-| Coordinate axes indicator | MEDIUM | LOW | P1 |
-| Step-through playback | HIGH | MEDIUM | P1 |
-| Code panel with syntax highlight | HIGH | MEDIUM | P1 |
-| Code-to-3D bidirectional linking | HIGH | HIGH | P1 |
-| TCP orientation frames | HIGH | MEDIUM | P2 |
-| Playback animation + speed | MEDIUM | MEDIUM | P2 |
-| Speed/zone overlay | MEDIUM | MEDIUM | P2 |
-| Multi-procedure support | MEDIUM | MEDIUM | P2 |
-| Path statistics | MEDIUM | LOW | P2 |
-| Code search | MEDIUM | LOW | P2 |
-| Wobj visualization | MEDIUM | HIGH | P3 |
-| CSV/point export | LOW | LOW | P3 |
-| STL workpiece overlay | LOW | HIGH | P3 |
-
-**Priority key:**
-- P1: Must have for launch (table stakes)
-- P2: Should have, add in v1.x
-- P3: Nice to have, future consideration
-
-## Competitor Feature Analysis
-
-| Feature | RobotStudio (ABB) | Roboguide (Fanuc) | RoboDK | NC Viewer (G-code) | Our Approach |
-|---------|-------------------|-------------------|--------|---------------------|-------------|
-| File load to path view | Slow: create station, import controller, load module | Slow: similar setup process | Moderate: import then configure | Instant: paste/open G-code | Instant: open .mod, see path |
-| 3D path visualization | Full robot + path | Full robot + path | Full robot + path | Toolpath lines only | Toolpath lines + orientation |
-| Code-to-path linking | Right-click "Go to declaration" | Limited | Limited | Line-by-line highlight | Click-bidirectional linking |
-| Move type distinction | Color-coded in path view | Color-coded | Color-coded | Rapid vs cut moves colored | Color + line style (solid/dash) |
-| Playback / animation | Full kinematic simulation | Full simulation | Full simulation | Speed-controlled playback | Step + animated playback |
-| Cost | Free (basic) / Licensed | Licensed ($$$) | Licensed ($30/mo+) | Free (web) | Free (desktop) |
-| Setup time | 5-15 minutes per station | 5-15 minutes | 2-5 minutes | Instant | Instant |
-| RAPID-specific | Yes (native) | No (TP language) | Multi-brand | No (G-code only) | Yes (RAPID-native) |
-
-### Competitive Position
-
-This tool occupies a niche that none of the competitors address well: **instant, zero-config RAPID toolpath visualization**. RobotStudio is powerful but heavyweight. G-code viewers are instant but don't understand RAPID. This tool combines the speed of a G-code viewer with RAPID-native parsing. The target user is someone who already has a .mod file and just wants to see if the path looks right before deploying.
+**Recommendation**: Use **line-level replacement** for coordinate/property edits (surgical, preserves context) and handle deletion as line removal with optional reconnection. Full regeneration is overkill and risky for v1.1.
 
 ## Sources
 
-- [ABB RobotStudio Desktop](https://www.abb.com/global/en/areas/robotics/products/software/robotstudio-suite/robotstudio-desktop) -- feature overview
-- [FANUC ROBOGUIDE](https://www.fanucamerica.com/products/robots/roboguide) -- feature set
-- [FANUC ROBOGUIDE v10 announcement](https://www.therobotreport.com/fanuc-unveils-roboguide-v10-robot-simulation-software/) -- latest features
-- [RoboDK Documentation - Path Input](https://robodk.com/doc/en/Robot-Machining-Path-input.html) -- toolpath features
-- [NC Viewer](https://ncviewer.com/) -- G-code viewer features as closest analog
-- [CNC Cookbook NC Viewer Guide](https://www.cnccookbook.com/nc-viewer/) -- G-code viewer feature analysis
-- [ABB RAPID Technical Reference Manual](https://library.e.abb.com/public/b227fcd260204c4dbeb8a58f8002fe64/Rapid_instructions.pdf) -- MoveL/MoveJ/MoveC/MoveAbsJ specifications
-- [abb_motion_program_exec (GitHub)](https://github.com/rpiRobotics/abb_motion_program_exec) -- RAPID motion program parsing reference
-- [ABB RAPID Utility Library](https://github.com/ernell/ABB-RAPID-UTILITY-LIBRARY) -- RAPID syntax reference
+- [ABB RobotStudio Suite](https://www.abb.com/global/en/areas/robotics/products/software/robotstudio-suite) -- reference for professional toolpath editing features
+- [RoboDK Documentation: Tips and Tricks](https://robodk.com/doc/en/Tips-and-Tricks.html) -- waypoint editing workflows (F3 to modify, mouse wheel coordinate adjust)
+- [BobCAD Toolpath Editor](https://bobcad.com/toolpath-editor-cad-cam-quick-tip-video/) -- CAM toolpath editing capabilities (modify, add, move, delete points)
+- [Mastercam Transform Toolpath](https://www.engineering.com/mastercams-transform-toolpath/) -- batch transform operations
+- [Qt QUndoStack Documentation](https://doc.qt.io/qt-6/qundostack.html) -- undo/redo framework for PyQt6
+- [Qt Undo Framework Overview](https://doc.qt.io/qt-6/qundo.html) -- Command pattern implementation
+- [ABB Forum: Modify robtarget coordinates](https://forums.robotstudio.com/discussion/10759/is-it-possible-to-modify-the-robtarget-pos-x-coordinate-of-a-robtarget-variable-automatically) -- confirms coordinate modification is a top user need
+- [ABB Forum: Adjust robtarget data](https://forums.robotstudio.com/discussion/8547/simple-program-to-adjust-robtarget-data-help) -- community demand for simple target editing tools
+- [ABB Developer Center: Undo-Redo](https://developercenter.robotstudio.com/api/robotstudio/articles/Concepts/Undo-Redo.html) -- RobotStudio's own undo/redo approach
 
 ---
-*Feature research for: ABB RAPID Toolpath Viewer*
-*Researched: 2026-03-30*
+*Feature research for: ABB RAPID Toolpath Viewer -- Milestone v1.1 Toolpath Editing*
+*Researched: 2026-04-01*

@@ -1,269 +1,325 @@
-# Pitfalls Research
+# Domain Pitfalls: Adding Editing to an Existing Viewer
 
-**Domain:** ABB RAPID Toolpath Viewer (Python + PyQt6 + PyOpenGL)
-**Researched:** 2026-03-30
-**Confidence:** HIGH (domain-specific, verified against ABB documentation and Qt/OpenGL community sources)
+**Domain:** ABB RAPID Toolpath Viewer -- Milestone v1.1 (Toolpath Editing)
+**Researched:** 2026-04-01
+**Confidence:** HIGH (analyzed against actual codebase architecture)
+
+---
 
 ## Critical Pitfalls
 
-### Pitfall 1: RAPID robtarget Declarations Span Multiple Lines and Have Inconsistent Whitespace
+Mistakes that cause rewrites or major issues.
+
+### Pitfall 1: Frozen Dataclasses Block In-Place Mutation
 
 **What goes wrong:**
-A naive line-by-line parser breaks immediately on real-world .mod files. RobotStudio and hand-edited files routinely split robtarget declarations across multiple lines. A single robtarget like `CONST robtarget p10:=[[500,0,400],[1,0,0,0],[-1,0,-1,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];` may appear as 1 line, 2 lines, or 6 lines depending on how the file was generated. Regex-per-line approaches miss split declarations entirely, producing silent data loss (points simply disappear from the viewer with no error).
+The existing data model uses `@dataclass(frozen=True)` for `RobTarget`, `MoveInstruction`, and `JointTarget`. Frozen dataclasses raise `FrozenInstanceError` on attribute assignment. A developer attempts `move.target.pos[0] = 100.0` or `move.speed = "v500"` and gets a runtime crash. The "fix" of unfreezing everything cascades into broken `__hash__` implementations (both `RobTarget` and `JointTarget` have custom `__hash__` using frozen fields), broken dict lookups in `targets: dict[str, RobTarget]`, and bugs everywhere frozen objects were relied upon as dict keys or set members.
 
 **Why it happens:**
-Developers test against clean, machine-generated files. Real production .mod files are edited by hand, merged from multiple sources, or exported by different RobotStudio versions with different formatting preferences.
+The v1.0 architecture correctly chose frozen dataclasses for a read-only viewer -- immutability prevents accidental corruption and enables hashing. But editing fundamentally requires mutability. The naive fix (remove `frozen=True`) breaks the existing code in subtle ways.
 
-**How to avoid:**
-- Parse the entire file content as a single string, not line-by-line.
-- Use semicolon (`;`) as the statement terminator to split statements first, then parse each statement.
-- Strip all newlines and normalize whitespace within each statement before extracting data.
-- Build a minimal statement-level tokenizer: read characters until `;`, accumulate into a statement buffer, then parse each complete statement.
+**Consequences:**
+- Unfreezing `RobTarget` breaks `targets` dict lookups if a target is mutated after being used as a key.
+- Unfreezing `MoveInstruction` breaks any code that relies on identity stability.
+- Hash values change after mutation, causing "ghost" entries in dicts/sets.
 
-**Warning signs:**
-- Parser works on tutorial examples but fails on customer files.
-- Point count from parser is lower than expected (some robtargets silently dropped).
-- Test files are all single-line formatted.
+**Prevention:**
+- Keep existing frozen dataclasses as-is for the parsed representation.
+- Introduce a separate mutable editing layer: `EditableMoveInstruction` wrapping a `MoveInstruction` with editable fields, or use `dataclasses.replace()` to produce new immutable instances on each edit.
+- The `dataclasses.replace()` pattern is already used in `main_window.py` line 166 (`replace(self._parse_result, moves=filtered_moves)`), so the codebase already has this pattern.
+- After editing, rebuild the relevant frozen instances. This is the "immutable state + replace" pattern used by Redux, Elm, and other edit-state architectures.
 
-**Phase to address:**
-Phase 1 (Parser foundation). This is the very first thing to get right. Design the parser around statement boundaries from day one.
+**Detection:**
+- `FrozenInstanceError` at runtime when first implementing coordinate editing.
+- Test: try `move_instruction.speed = "v500"` -- if it raises, the model is still frozen.
+
+**Phase to address:** First editing phase (data model). Must be resolved before any edit feature is implemented.
 
 ---
 
-### Pitfall 2: ABB Quaternion Convention Differs from Common 3D Libraries
+### Pitfall 2: Round-Trip .mod Serialization Destroys Formatting, Comments, and Non-Parsed Sections
 
 **What goes wrong:**
-ABB RAPID uses quaternion order `[q1, q2, q3, q4]` where `q1` is the scalar (w) component: `orient := [q1, q2, q3, q4]` maps to `[w, x, y, z]`. However, many Python libraries (scipy.spatial.transform.Rotation, some numpy-quaternion builds) expect `[x, y, z, w]` order. Silently swapping scalar/vector components produces orientations that look "almost right" but are rotated incorrectly -- tool Z-axes point in wrong directions, making the viewer subtly wrong and hard to debug.
+The current parser (`parse_module`) extracts move instructions and robtarget declarations but discards everything else: comments (stripped by `code = line.split("!", 1)[0]`), blank lines, indentation, non-move statements (IF/WHILE/FOR blocks, PROC/FUNC definitions, variable declarations beyond robtargets, TPWrite, WaitTime, etc.). If the "Save As" feature reconstructs the .mod file from `ParseResult` data alone, the output file will be a skeleton containing only the edited targets and moves -- all program logic, comments, and formatting are gone. A robot engineer who opens the saved file and sees their program gutted will never trust the tool again.
 
 **Why it happens:**
-There is no universal quaternion convention. ABB uses scalar-first `[w, x, y, z]`. scipy.spatial.transform.Rotation.from_quat() expects scalar-last `[x, y, z, w]`. Developers copy quaternion values directly without reordering and get wrong but plausible-looking orientations.
+The parser was designed for rendering, not round-tripping. It extracts what it needs and discards the rest. The `source_text` field in `ParseResult` preserves the original text but there is no mechanism to map edits back into specific character ranges of that text.
 
-**How to avoid:**
-- Define a single internal quaternion convention in the codebase (recommend `[w, x, y, z]` to match ABB natively).
-- At every boundary where quaternions enter or leave the system (parsing, rendering, any library call), document and enforce the convention with explicit conversion functions.
-- Write a unit test with a known orientation: `[1, 0, 0, 0]` = identity (no rotation), `[0, 1, 0, 0]` = 180-degree rotation around X. Verify the visual result matches.
-- Use `scipy.spatial.transform.Rotation.from_quat([q2, q3, q4, q1])` -- note the reorder putting ABB's q1 last.
+**Consequences:**
+- Saved .mod files are missing all non-move content (IF/ELSE, loops, custom procedures, comments).
+- File is syntactically valid RAPID but semantically incomplete -- running it on a robot would fail or behave unexpectedly.
+- Users lose trust in the tool and refuse to use the export feature.
 
-**Warning signs:**
-- Tool orientation markers point in unexpected directions but positions are correct.
-- Rotations "look close" but are off by 90 or 180 degrees on certain axes.
-- Identity quaternion `[1,0,0,0]` does not render as "no rotation."
+**Prevention:**
+- Do NOT reconstruct the file from parsed data. Instead, use a text-patching approach:
+  1. Keep the original `source_text` as the base document.
+  2. When a robtarget coordinate is edited, locate the exact character range of the value in the original text (using `source_line` + regex match position) and perform a surgical string replacement.
+  3. When a move instruction property is changed (speed, zone), locate the exact parameter in the original text and replace just that token.
+  4. When a move is deleted, remove the line range and optionally the associated robtarget declaration.
+- Store character offsets (start, end) for each parsed entity during parsing, not just line numbers. This is the key architectural change needed.
+- Alternative: use the existing line-number mapping. Since `RobTarget.source_line` and `MoveInstruction.source_line` track the 1-indexed line, find the line in `source_text.splitlines()`, regex-match the specific value, and replace it.
 
-**Phase to address:**
-Phase 1 (Parser) and Phase 2 (3D Viewer). Must be locked down before any orientation visualization. Add a reference test fixture with known ABB quaternion values and expected Euler angles.
+**Detection:**
+- Save a file with comments and re-open it. If comments are gone, the serializer is reconstructing instead of patching.
+- Diff the saved file against the original -- only edited values should differ.
+
+**Phase to address:** Must be designed before implementing "Save As". The serialization architecture determines whether editing is viable.
 
 ---
 
-### Pitfall 3: PyOpenGL Immediate Mode Renders 10x Slower Than VBOs
+### Pitfall 3: Undo/Redo Complexity Explodes Without a Command Pattern from Day One
 
 **What goes wrong:**
-Using `glBegin()`/`glEnd()` immediate mode to draw toolpath lines and markers works fine for 50 points but becomes unusably slow (sub-10 FPS) at 500+ points. Real production .mod files can contain 2,000-10,000+ points. The app appears to work during development with small test files, then performs terribly with real data.
+Developers add editing features one at a time: first coordinate editing, then speed changes, then deletion. Each feature directly mutates the data model. When undo/redo is requested later, there is no record of what changed. Retrofitting undo requires wrapping every mutation site, which means rewriting every edit feature. Worse, compound operations (e.g., "delete waypoint and reconnect path") require transactional undo -- undoing the reconnection without restoring the deletion leaves the data in an impossible state.
 
 **Why it happens:**
-PyOpenGL 3.x uses ctypes under the hood, and each `glVertex3f()` call incurs Python-to-C overhead. Immediate mode makes thousands of these calls per frame. VBOs batch the data into GPU memory and draw with a single call.
+Undo/redo feels like a "nice to have" that can be added later. In reality, the edit architecture must be designed around undoable operations from the start, or the retrofit cost is proportional to the number of edit features already built.
 
-**How to avoid:**
-- Use VBOs (Vertex Buffer Objects) from the start. Build numpy arrays of vertex data (`dtype=numpy.float32` -- this is critical), upload once to GPU, draw with `glDrawArrays()`.
-- Install `OpenGL_accelerate` (pip install PyOpenGL-accelerate) for ctypes optimization.
-- Set `OpenGL.ERROR_ON_COPY = True` before importing GL modules to catch accidental dtype conversions that cause silent performance degradation.
-- For dynamic highlight (current step marker), use a small separate VBO or uniform, not rebuild the entire buffer.
+**Consequences:**
+- Every edit feature must be rewritten to use commands.
+- Partial undo (undoing one part of a compound operation) corrupts the data model.
+- Users make accidental edits with no way to recover, especially dangerous for robot programs.
 
-**Warning signs:**
-- Frame rate drops as point count increases linearly.
-- Camera orbit/zoom feels sluggish even with moderate file sizes.
-- Profiler shows most time in `glVertex` or `glColor` calls.
+**Prevention:**
+- Use Qt's `QUndoStack` + `QUndoCommand` pattern. PyQt6 provides `QUndoStack` in `PyQt6.QtGui`.
+- Define one `QUndoCommand` subclass per edit operation: `EditCoordinateCommand`, `EditSpeedCommand`, `DeleteWaypointCommand`, `EditZoneCommand`.
+- Each command stores the old value and new value. `redo()` applies the new value, `undo()` restores the old value.
+- For compound operations, use `QUndoCommand` macro grouping (`beginMacro`/`endMacro`).
+- Set `QUndoStack.setUndoLimit()` to prevent unbounded memory growth (100-200 commands is reasonable).
+- Wire `QUndoStack.cleanChanged` to the window title (show asterisk for unsaved changes).
+- Implement undo/redo BEFORE implementing any edit feature. The command pattern is the edit architecture, not a feature layered on top.
 
-**Phase to address:**
-Phase 2 (3D Viewer foundation). Choose VBO architecture from the first OpenGL code. Retrofitting VBOs into immediate-mode code requires a complete rewrite of the rendering pipeline.
+**Detection:**
+- If any edit feature directly mutates data without going through a command, undo is broken.
+- Test: edit a coordinate, undo, verify the coordinate reverts. If this test does not exist, undo is not integrated.
+
+**Phase to address:** First editing phase. QUndoStack must be created before the first edit feature is implemented. Every edit feature must use it.
 
 ---
 
-### Pitfall 4: QOpenGLWidget Context Not Current Outside paintGL/initializeGL/resizeGL
+### Pitfall 4: GL Buffer Full Rebuild on Every Edit Kills Interactivity
 
 **What goes wrong:**
-Calling OpenGL functions (buffer creation, texture upload, shader compilation) outside the three protected methods without calling `makeCurrent()` first produces silent failures or crashes. Common scenario: user loads a new .mod file, parser finishes, code tries to update VBO data from a slot connected to a signal -- OpenGL context is not current, `glBufferData()` silently does nothing or segfaults.
+The current `update_scene()` flow is: `parse_result -> build_geometry() -> upload all VBOs`. This works for file load (happens once) but is too expensive for interactive editing. When a user drags a waypoint or changes a coordinate, the entire geometry is rebuilt from scratch: `build_geometry()` iterates all moves, builds float lists, converts to numpy arrays, and uploads all VBOs. For a 5000-point toolpath, this takes 50-100ms per edit -- visible lag during interactive dragging.
 
 **Why it happens:**
-Qt only guarantees the OpenGL context is current inside `initializeGL()`, `resizeGL()`, and `paintGL()`. Any other method (button click handlers, file load callbacks, timer slots) does NOT have a current context. The Qt documentation states this clearly but it is easy to miss.
+The v1.0 architecture was designed for load-once-render-many. There was no reason to optimize the upload path because it only runs on file open. The `build_geometry()` function is monolithic -- it builds all buffers in one pass with no way to update a single segment.
 
-**How to avoid:**
-- Call `self.makeCurrent()` at the start of any method that touches OpenGL state outside the three protected methods.
-- Better pattern: never call OpenGL functions directly from UI callbacks. Instead, set a flag/queue the data update and call `self.update()` to trigger `paintGL()`, where the context is guaranteed current.
-- For cleanup, use `hideEvent()` instead of `__del__` -- Python destructor timing is unreliable and the context may already be destroyed.
+**Consequences:**
+- Coordinate editing with real-time 3D preview feels sluggish.
+- Users expect immediate visual feedback when editing; 100ms delays make the tool feel broken.
+- Developers try to optimize by throttling updates, which creates a different problem (stale display).
 
-**Warning signs:**
-- OpenGL errors appear only when loading a second file (first file loads in initializeGL where context is current).
-- Crashes on file reload but not on initial load.
-- Black screen after data update but orbit/zoom still works.
+**Prevention:**
+- For v1.1, accept full rebuild for now but optimize the rebuild path:
+  1. Move the expensive numpy operations out of the hot path (pre-allocate arrays, use `numpy` vectorized ops instead of Python loops in `build_geometry()`).
+  2. Use `glBufferSubData()` for single-point coordinate edits: calculate which vertex indices changed and update only those bytes in the VBO.
+  3. Keep the full rebuild path as a fallback for structural changes (add/delete waypoints) that change buffer sizes.
+- Separate geometry into per-segment VBOs only if profiling shows the monolithic approach is too slow. Premature segmentation adds complexity.
+- For single-coordinate edits (the most common operation), the affected vertices are: the marker point (1 vertex), the line segment ending at this point (2 vertices), and the line segment starting from this point (2 vertices). That is 5 vertices to update via `glBufferSubData()`, regardless of total point count.
 
-**Phase to address:**
-Phase 2 (3D Viewer). Establish the update pattern in the very first QOpenGLWidget implementation. Document the rule: "OpenGL calls only in paintGL or after makeCurrent()."
+**Detection:**
+- Profile `update_scene()` with a 5000-point file. If it takes >50ms, interactive editing will feel laggy.
+- Test: edit one coordinate, measure time from edit to screen update.
+
+**Phase to address:** Can start with full rebuild and optimize later, but the data model must track which indices changed to enable partial updates. Design the edit commands to carry index information.
 
 ---
 
-### Pitfall 5: MoveC Circular Interpolation Requires Arc Geometry, Not Just Two Points
+### Pitfall 5: Selection State Becomes a Tangled Web of Signals
 
 **What goes wrong:**
-MoveC takes a CirPoint (intermediate point on the arc) and a ToPoint (endpoint). Unlike MoveL (start-to-end line) and MoveJ (start-to-end joint interpolation), MoveC requires computing a circular arc through three points (previous position, CirPoint, ToPoint). Developers who build the viewer as "connect the dots with lines" will render MoveC as a straight line or two line segments, which is visually wrong and defeats the purpose of a toolpath verifier.
+The current architecture has three components that reflect selection state: `PlaybackState` (owns the index), `ToolpathGLWidget` (highlights the point), and `CodePanel` (highlights the line). Adding editing introduces a fourth participant: the properties/info panel showing editable fields for the selected waypoint. Now there are circular signal chains: user clicks in 3D -> PlaybackState updates -> CodePanel highlights -> CodePanel emits `line_clicked` -> PlaybackState updates again -> infinite loop. The existing code in `_on_code_line_clicked` partially avoids this because `set_index` checks `if index == self._current_index: return`, but editing adds new signals (property changed, coordinate updated) that create new cycles.
 
 **Why it happens:**
-MoveL and MoveJ are straightforward (line between two points). MoveC is fundamentally different -- it defines a circular arc, and the visual representation must show the actual curved path. Developers defer MoveC handling and never implement it properly.
+Each new UI component adds N new signal connections to the existing N components, creating O(N^2) potential signal paths. Without a clear "single source of truth" discipline, signals bounce between components and either loop infinitely or produce stale state where one panel shows old values.
 
-**How to avoid:**
-- Implement three-point circle arc computation: given P1 (current pos), P2 (CirPoint), P3 (ToPoint), compute the center and radius of the circle passing through all three, then generate interpolated points along the arc from P1 through P2 to P3.
-- Use numpy for the geometry: find the plane of the three points, compute the circumcenter, then parametrically sample the arc.
-- Render the arc as a polyline with 20-50 segments (sufficient visual smoothness).
-- Handle the degenerate case where three points are collinear (fall back to straight line).
+**Consequences:**
+- Infinite signal loops (UI freezes or stack overflow).
+- Panel A shows updated value but Panel B shows the old value.
+- Editing a property in the info panel triggers a 3D click handler which re-selects a different point.
 
-**Warning signs:**
-- MoveC paths render as straight lines or V-shapes.
-- Circular weld paths look like polygons.
-- No test case specifically validates MoveC rendering against known arc geometry.
+**Prevention:**
+- `PlaybackState` is already the single source of truth for selection. Keep it that way. All selection changes go through `PlaybackState.set_index()`, which already has the `if index == self._current_index: return` guard.
+- For editing, add an `EditingModel` (or extend `PlaybackState`) that owns the current edit state. All edit operations go through this model. UI components observe the model and never talk to each other directly.
+- Use `blockSignals(True)` when programmatically updating UI controls that emit change signals. The code panel already needs this pattern.
+- Establish a clear signal flow diagram: `User action -> Model update -> Signal emission -> All observers update`. No observer should trigger a model update in response to a signal (unless it is a genuinely new user action).
 
-**Phase to address:**
-Phase 1 (Parser) must capture the CirPoint + ToPoint structure. Phase 2 (3D Viewer) must implement arc interpolation. Do not defer -- MoveC is a core requirement per the project spec.
+**Detection:**
+- Add a `print()` or logging statement in every signal handler. If any handler fires more than once per user action, there is a signal loop.
+- Test: select waypoint in 3D, verify the properties panel shows correct data without triggering re-selection.
+
+**Phase to address:** Must be designed before adding the properties panel. The selection architecture must support a fourth observer cleanly.
 
 ---
 
-### Pitfall 6: Coordinate Frame Chain Ignored -- Rendering Everything in World Frame
+### Pitfall 6: Delete Waypoint Without Handling Adjacent Segment Reconnection
 
 **What goes wrong:**
-RAPID robtargets are defined relative to a work object (wobj), which itself is defined by a user frame and object frame relative to the world frame. The full transform chain is: `World -> UserFrame -> ObjectFrame -> robtarget`. If the parser ignores `wobj` and `tooldata` references in Move instructions, all points render in world coordinates. This works when `wobj0` (identity) is used, but production programs frequently use custom work objects. Points appear in completely wrong positions.
+The project requirements include "toolpath delete with next-path connect/disconnect option." Deleting a waypoint is not just removing it from a list -- it changes the topology of the path. If waypoint B is deleted from sequence A->B->C, the user must choose: (a) reconnect A->C directly (different path!), or (b) leave a gap (A stops, C starts fresh). Simply removing B from `moves` list and rebuilding geometry creates an A->C connection automatically (because `build_geometry` connects consecutive points), which may not be what the user intended. Worse, if B was a MoveC circle point, deleting it invalidates the arc definition entirely.
 
 **Why it happens:**
-For v1 with `wobj0`, ignoring coordinate frames works perfectly. The problem only surfaces when a user loads a file that references a custom `wobj`. The developer never encounters this during development because test files use `wobj0`.
+List-based thinking: "delete = remove from list." But toolpath topology is not a list -- it is a sequence of motion segments where each segment type (MoveL, MoveJ, MoveC) has different implications for what "the previous point" means.
 
-**How to avoid:**
-- In v1, parse the `wobj` parameter from Move instructions. If it is `wobj0`, proceed normally. If it is a custom wobj, either:
-  (a) Parse the wobjdata definition and apply the transform chain, or
-  (b) Display a clear warning: "Custom work object 'myWobj' detected -- positions shown in work object frame, not world frame."
-- Store the wobj reference with each parsed move instruction even if you do not resolve it yet -- this prevents a parser redesign later.
-- The transform chain is: `P_world = T_user * T_object * P_robtarget` where T_user and T_object come from the wobjdata.
+**Consequences:**
+- Unintended path connections after deletion (robot takes a shortcut through the workpiece).
+- MoveC arc becomes invalid (only 2 of 3 defining points remain).
+- Laser-on state transitions get lost (deleting the point where SetDO toggles laser).
 
-**Warning signs:**
-- Viewer works perfectly on some files but shows points in bizarre locations on others.
-- Points cluster near origin when they should be spread across a large workpiece.
-- No wobj parameter captured in the parser's move instruction data structure.
+**Prevention:**
+- Implement deletion as a multi-step operation with user confirmation:
+  1. Show a preview of the path after deletion (with and without reconnection).
+  2. If the deleted point is a MoveC intermediate or endpoint, warn that the arc will be converted to a MoveL or removed.
+  3. If the deleted point has a SetDO (laser toggle) before it, warn that laser state changes will be lost.
+- In the undo command, store not just the deleted move but also its index, so it can be re-inserted at the exact position.
+- Consider marking moves as "disabled" (soft delete) instead of removing them, making undo trivial.
 
-**Phase to address:**
-Phase 1 (Parser) should capture wobj references. Phase 3 or later can implement full coordinate frame resolution. But the data model must support it from Phase 1.
+**Detection:**
+- Test: delete a middle waypoint, verify the path visualization matches expectations.
+- Test: delete a MoveC endpoint, verify no crash and arc is handled.
+
+**Phase to address:** Delete feature phase. Must be designed with the reconnection logic, not added as an afterthought.
 
 ---
 
-### Pitfall 7: Step Playback Index Desyncs from Code Line Mapping
+## Moderate Pitfalls
+
+### Pitfall 7: Source Line Numbers Become Invalid After Edits
 
 **What goes wrong:**
-The step playback feature (forward/back through toolpath points) and the code-line highlighting feature are built as separate systems. The playback index maps to a list of 3D points, while the code highlight maps to line numbers. When the parser skips unparseable lines, encounters comments, or handles multi-line declarations, the index-to-line mapping silently breaks. Clicking point 47 highlights line 52 instead of line 47's actual source line.
+Every `RobTarget` and `MoveInstruction` stores a `source_line` integer pointing into the original file. When a waypoint is deleted (removing lines from the source text) or added (inserting lines), all subsequent `source_line` values become wrong. The code panel shows the wrong line highlighted, clicking in the code panel selects the wrong waypoint, and saved files have edits applied to the wrong locations.
 
-**Why it happens:**
-Point index and source line number are not the same thing. A .mod file has comments, blank lines, variable declarations, procedure headers, and non-movement instructions between move commands. Developers assume `point_index == line_number` or maintain two separate lists that drift apart.
+**Prevention:**
+- After any edit that changes line counts, recalculate all `source_line` values by re-parsing or applying a line offset delta to all instructions after the edit point.
+- Better: use the immutable `source_line` only for the original file. Track edits as a list of patches (line number, old text, new text) and apply them to `source_text` to produce the current document. The code panel always displays the current patched document.
+- For "Save As", apply all patches sequentially to the original source text.
 
-**How to avoid:**
-- During parsing, create a single data structure that binds each parsed move instruction to its source line number(s): `MoveInstruction(type, target, line_start, line_end)`.
-- The playback controller indexes into the list of MoveInstructions, and each instruction carries its source location.
-- Never maintain separate "list of points" and "list of line numbers" -- they will desync.
-- For multi-line declarations, store the range (line_start to line_end).
+**Detection:**
+- Delete a waypoint near the top of the file, then click a waypoint near the bottom. If the code panel highlights the wrong line, `source_line` values are stale.
 
-**Warning signs:**
-- Highlighting is off by a few lines and gets progressively worse later in the file.
-- Adding comments to the .mod file shifts all subsequent highlights.
-- No explicit line number stored in the parsed instruction data structure.
-
-**Phase to address:**
-Phase 1 (Parser) must capture line numbers. Phase 3 (Step Playback + Code Sync) depends on this. If Phase 1 does not store line numbers, Phase 3 requires parser rework.
+**Phase to address:** Must be solved alongside the first edit feature that modifies source text.
 
 ---
 
-## Technical Debt Patterns
+### Pitfall 8: Offs() Target References Create Hidden Dependencies
 
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Regex-only parsing (no tokenizer) | Fast to implement for simple cases | Cannot handle nested brackets, multiline, escapes; breaks on edge cases | Never for production; OK for a 1-hour prototype only |
-| Immediate mode OpenGL | Easier to understand, no buffer management | 10-50x slower rendering, must rewrite entirely for VBO | Never -- VBO code is barely more complex |
-| Hardcoded `wobj0` assumption | Skip coordinate frame math | Breaks on any file using custom work objects; requires parser redesign to add later | Acceptable in Phase 1 MVP if wobj data is still captured in the data model |
-| Single numpy dtype for all GL data | Simpler array construction | Silent dtype conversion causes copies, 2-5x perf hit | Never -- always specify `dtype=np.float32` explicitly |
-| `QTimer(0)` for animation | Simple playback implementation | Framerate depends on system load, inconsistent speed | Phase 1 prototype only; replace with elapsed-time-based stepping |
+**What goes wrong:**
+The parser resolves `Offs(pBase, dx, dy, dz)` into a new `RobTarget` with computed position. If the user edits `pBase`'s coordinates, all `Offs()` references to `pBase` should update too. But the resolver creates independent `RobTarget` copies -- the `Offs` result has no back-reference to `pBase`. Editing `pBase` leaves all `Offs(pBase, ...)` points at their old positions.
 
-## Integration Gotchas
+**Prevention:**
+- Track `Offs()` dependencies: when resolving `Offs(pBase, dx, dy, dz)`, store the relationship `(base_name="pBase", offset=[dx, dy, dz])` in the resolved target.
+- When `pBase` is edited, find all moves whose target was derived via `Offs(pBase, ...)` and recompute their positions.
+- Alternatively, for v1.1 simplicity: when editing a point that is an Offs reference, warn the user that only the resolved position is being edited, not the base target. This breaks the Offs relationship but is transparent.
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| PyOpenGL + QOpenGLWidget | Using `glBindFramebuffer(GL_FRAMEBUFFER, 0)` to unbind | Use `self.defaultFramebufferObject()` -- Qt renders to an FBO, not FBO 0 |
-| PyOpenGL + numpy | Passing `float64` arrays to GL functions | Always use `np.float32`. Set `OpenGL.ERROR_ON_COPY = True` to catch this |
-| QOpenGLWidget + file loading | Updating GL buffers in file-open callback | Set dirty flag, call `self.update()`, do GL work in `paintGL()` |
-| QTextEdit + 3D viewer selection | Blocking signals during programmatic highlight changes | Use `blockSignals(True)` or a guard flag to prevent highlight-change triggering re-selection loops |
-| scipy Rotation + ABB quaternions | Passing `[q1,q2,q3,q4]` directly to `Rotation.from_quat()` | Reorder to `[q2,q3,q4,q1]` (scipy expects `[x,y,z,w]`, ABB gives `[w,x,y,z]`) |
+**Detection:**
+- Edit a base robtarget, check if Offs-derived points update. If they do not, dependencies are not tracked.
 
-## Performance Traps
+**Phase to address:** Coordinate editing phase. At minimum, display a warning for Offs-derived targets.
 
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Rebuilding VBO every frame | FPS drops linearly with point count | Upload VBO once on file load; only update highlight uniform per frame | >200 points |
-| Python-side arc interpolation per frame | MoveC arcs recalculated on every repaint | Pre-compute arc polyline segments at parse time, store in VBO | >10 MoveC instructions |
-| Full scene redraw on step change | Noticeable lag on step forward/back | Only update the "current position" marker; static geometry stays in GPU | >500 points |
-| `glGetError()` in render loop | Each call forces GPU sync, kills pipeline parallelism | Only use `glGetError()` in debug mode, remove from production render path | Always a problem, masks other perf issues |
-| Large .mod file string operations | Parser hangs on multi-MB files | Use compiled regex (`re.compile()`), avoid repeated string concatenation, process statement-by-statement | >1MB .mod files (10,000+ points) |
+---
 
-## UX Pitfalls
+### Pitfall 9: Code Panel Becomes an Inconsistent Second Source of Truth
 
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| No visual distinction between MoveJ and MoveL | Cannot verify motion type correctness | Dashed line for MoveJ, solid for MoveL, curved for MoveC (project spec already requires this) |
-| Camera starts at origin looking at origin | User sees nothing if toolpath is at [1500, 800, 400] | Auto-fit camera to bounding box of parsed points on file load |
-| No error feedback on parse failure | User opens file, sees empty viewer, assumes app is broken | Show parse error dialog with line number and partial results: "Parsed 47/50 points, error at line 203" |
-| Step playback has no speed control | Too fast or too slow for different path lengths | Provide speed slider; use constant mm/sec interpolation rather than constant time per step |
-| Orientation markers too large/small | Clutter the view or invisible | Scale orientation axes relative to bounding box size, provide a slider |
-| No coordinate readout on hover/click | User cannot verify actual position values | Tooltip or status bar showing `[x, y, z]` and `[q1, q2, q3, q4]` of selected point |
+**What goes wrong:**
+The `CodePanel` currently displays `source_text` from `ParseResult` -- a read-only snapshot of the original file. When edits are made through the properties panel or 3D widget, the code panel still shows the original text. The user sees old coordinates in the code while the 3D view shows new coordinates. If the code panel is updated to show modified text, but the modification is done by string replacement on a separate copy, the code panel and the edit model can drift apart.
 
-## "Looks Done But Isn't" Checklist
+**Prevention:**
+- Maintain a single mutable document (the patched source text) that the code panel displays.
+- Every edit operation updates this document first, then the code panel refreshes from it.
+- Never let the code panel hold its own copy of the source text independently of the edit model.
+- The `CodePanel.set_source()` method should be called after every edit, or the code panel should observe the document model directly.
 
-- [ ] **Parser:** Handles multiline robtarget declarations -- test with hand-formatted files, not just RobotStudio exports
-- [ ] **Parser:** Handles `PERS`, `VAR`, and `CONST` robtarget declarations -- all three storage classes
-- [ ] **Parser:** Captures CirPoint for MoveC, not just ToPoint -- verify with a file containing circular moves
-- [ ] **Parser:** Stores source line numbers with each instruction -- verify by checking highlight accuracy on a 200+ line file
-- [ ] **3D Viewer:** Camera auto-fits to data on file load -- test with toolpaths at various scales and positions
-- [ ] **3D Viewer:** Works with files containing only MoveAbsJ (joint targets, no Cartesian position) -- must either skip gracefully or convert
-- [ ] **Quaternion handling:** `[1,0,0,0]` renders as identity (no rotation) -- if tool axis points wrong direction, convention is swapped
-- [ ] **Step playback:** First and last steps are reachable -- off-by-one errors are extremely common in index-based navigation
-- [ ] **Code sync:** Highlighting correct line after scrolling the code view -- selection and scroll position interact in Qt text widgets
-- [ ] **MoveC rendering:** Arcs visually curved, not straight lines or V-shapes -- test with a known circular path
+**Detection:**
+- Edit a coordinate, look at the code panel. If it still shows the old value, the code panel is stale.
 
-## Recovery Strategies
+**Phase to address:** First edit feature. The code panel update mechanism must be defined before any editing is implemented.
 
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| Regex-only parser fails on real files | HIGH | Rewrite parser with statement-level tokenizer; design change, not a fix |
-| Immediate mode rendering too slow | HIGH | Rewrite all rendering code to use VBOs; cannot incrementally fix |
-| Quaternion convention wrong | LOW | Add reorder function at parse boundary; fix is localized if architecture is clean |
-| Missing wobj support | MEDIUM | If wobj reference was captured in data model: add transform math. If not captured: parser rework needed |
-| Step-to-line desync | MEDIUM | If line numbers stored in parse result: fix mapping logic. If not stored: parser rework needed |
-| QOpenGLWidget context crashes | LOW | Add `makeCurrent()` calls; localized fix once pattern is understood |
-| MoveC renders as straight line | MEDIUM | Add arc computation math; self-contained geometry module, moderate effort |
+---
 
-## Pitfall-to-Phase Mapping
+### Pitfall 10: Speed/Zone Value Validation Against RAPID Semantics
 
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| Multiline robtarget parsing | Phase 1 (Parser) | Test with 5+ real .mod files from different sources; count parsed points vs expected |
-| Quaternion convention mismatch | Phase 1 (Parser) + Phase 2 (Viewer) | Unit test: ABB `[1,0,0,0]` = identity orientation in viewer; `[0,0.707,0,0.707]` = known 90-degree rotation |
-| Immediate mode performance | Phase 2 (3D Viewer) | Load 2000-point file, measure FPS during orbit; must sustain 30+ FPS |
-| QOpenGLWidget context management | Phase 2 (3D Viewer) | Load file, then load a second file; no crash, no black screen |
-| MoveC arc rendering | Phase 1 (Parser) + Phase 2 (Viewer) | Visual comparison: MoveC path should trace a smooth curve matching the three defining points |
-| Coordinate frame chain (wobj) | Phase 1 (data model) + Phase 3+ (implementation) | Load file with custom wobj; verify warning or correct transform |
-| Step-to-line desync | Phase 1 (Parser) + Phase 3 (Playback) | Step to point N, verify highlighted line contains the corresponding Move instruction |
+**What goes wrong:**
+RAPID speed data (`v100`, `v500`, `vmax`) and zone data (`fine`, `z10`, `z50`) are not arbitrary strings -- they are predefined RAPID data types with specific meanings. The current parser stores them as plain strings (`speed: str`, `zone: str`). An editing UI that lets the user type freeform text risks invalid values (`v99999`, `zfoo`) that will cause robot controller errors when the file is loaded on an actual ABB controller.
+
+**Prevention:**
+- Provide dropdown/combobox selection for speed and zone values, populated with standard RAPID values.
+- Allow custom values but validate format: `v[integer]` for speed, `z[integer]` or `fine` for zone.
+- Display a warning for non-standard values, not a hard block (some sites define custom speed data).
+
+**Detection:**
+- Type a nonsensical speed value and save. If the file is accepted without warning, validation is missing.
+
+**Phase to address:** Properties editing phase.
+
+---
+
+## Minor Pitfalls
+
+### Pitfall 11: Edit Mode vs. View Mode UX Confusion
+
+**What goes wrong:**
+Users accidentally edit waypoints while trying to navigate (orbit, pan, zoom). A click intended to start an orbit drag is interpreted as a waypoint selection for editing. Or a scroll intended for zoom triggers a value change in a spinbox.
+
+**Prevention:**
+- Add an explicit Edit Mode toggle (toolbar button or keyboard shortcut).
+- In View Mode: clicks orbit/pan/zoom, no editing possible.
+- In Edit Mode: clicks select waypoints for editing, orbit requires modifier key (e.g., Alt+drag).
+- Visual indicator: change cursor or border color when in Edit Mode.
+
+**Phase to address:** UI/UX design phase, before implementing editing interactions.
+
+---
+
+### Pitfall 12: Multiple PROC Filtering + Editing Interaction
+
+**What goes wrong:**
+The current PROC filter creates a filtered view of moves. If a user edits a waypoint while a PROC filter is active, the edit must apply to the correct move in the full (unfiltered) list. The filtered view uses `dataclasses.replace(self._parse_result, moves=filtered_moves)` which creates a copy -- edits to the copy do not propagate back to the original `ParseResult`.
+
+**Prevention:**
+- Edits must always reference the canonical move list in the original `ParseResult`, not the filtered copy.
+- Use indices into the original list, not the filtered list, for edit commands.
+- When applying an edit, update the original, then re-apply the current filter to refresh the view.
+
+**Detection:**
+- Activate a PROC filter, edit a waypoint, remove the filter. If the edit is lost, the filtered copy was edited instead of the original.
+
+**Phase to address:** Editing architecture phase. The relationship between filtered views and the canonical data must be clear.
+
+---
+
+## Phase-Specific Warnings
+
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| Data model for editing | Frozen dataclass mutation (Pitfall 1) | Use `dataclasses.replace()` pattern; keep frozen types |
+| .mod serialization / Save As | Destroying comments/formatting (Pitfall 2) | Text-patching on original source, not reconstruction |
+| Undo/redo | Retrofitting after edit features exist (Pitfall 3) | Implement QUndoStack before any edit feature |
+| GL buffer updates | Full rebuild per edit (Pitfall 4) | Accept full rebuild initially; design for partial update later |
+| Selection + properties panel | Signal loops (Pitfall 5) | Single source of truth in PlaybackState |
+| Waypoint deletion | Topology corruption (Pitfall 6) | User confirmation with preview; handle MoveC specially |
+| Coordinate editing | Stale source_line values (Pitfall 7) | Single mutable document as source of truth |
+| Coordinate editing | Offs() dependency blindness (Pitfall 8) | Track or warn about Offs relationships |
+| Code panel sync | Stale display (Pitfall 9) | Code panel observes the mutable document |
+| Speed/zone editing | Invalid RAPID values (Pitfall 10) | Dropdown selection + validation |
+| Edit UX | Accidental edits during navigation (Pitfall 11) | Explicit Edit Mode toggle |
+| PROC filter + editing | Edits lost on filter change (Pitfall 12) | Edit canonical data, not filtered view |
+
+## Architecture Risk Summary
+
+The single highest-risk architectural decision for v1.1 is the **serialization strategy** (Pitfall 2). If the team reconstructs .mod files from parsed data, the feature is DOA -- no robot engineer will use a tool that strips their comments and program logic. The text-patching approach requires storing character offsets during parsing, which means the parser needs to be enhanced (not rewritten) to track these positions.
+
+The second highest risk is **undo/redo architecture** (Pitfall 3). If edit features ship without QUndoStack, every feature will need to be rewritten to add undo support. This is a foundational decision that must be made before the first edit line of code.
 
 ## Sources
 
-- [ABB RAPID Technical Reference Manual](https://library.e.abb.com/public/688894b98123f87bc1257cc50044e809/Technical%20reference%20manual_RAPID_3HAC16581-1_revJ_en.pdf) -- RAPID syntax, data types, instruction reference
-- [ABB RAPID Instructions Reference](https://library.e.abb.com/public/b227fcd260204c4dbeb8a58f8002fe64/Rapid_instructions.pdf) -- MoveL, MoveJ, MoveC, MoveAbsJ specifications
-- [Qt 6 QOpenGLWidget Documentation](https://doc.qt.io/qt-6/qopenglwidget.html) -- Context management, FBO handling, cleanup patterns
-- [PySide6 QOpenGLWidget Documentation](https://doc.qt.io/qtforpython-6/PySide6/QtOpenGLWidgets/QOpenGLWidget.html) -- Python-specific context and cleanup guidance
-- [PyOpenGL for OpenGL Programmers](https://pyopengl.sourceforge.net/documentation/opengl_diffs.html) -- Performance characteristics, dtype handling, ERROR_ON_COPY
-- [ABB Quaternion Orientation Forum Discussion](https://forums.robotstudio.com/discussion/9435/quaternion-orientation) -- ABB quaternion convention `[q1=w, q2=x, q3=y, q4=z]`
-- [ABB Quaternion Calculator](https://quat2euler.com/) -- Euler-to-quaternion conversion verification tool
-- [ABB User and Object Frame Discussion](https://forums.robotstudio.com/discussion/2606/user-and-object-frame) -- wobj coordinate frame hierarchy
-- [PyOpenGL VBO and numpy dtype issue](https://github.com/mcfletch/pyopengl/issues/5) -- Memory allocation on dtype mismatch
+- Codebase analysis: `tokens.py` (frozen dataclasses), `rapid_parser.py` (comment stripping, line tracking), `geometry_builder.py` (monolithic build), `toolpath_gl_widget.py` (full VBO rebuild), `main_window.py` (signal wiring), `playback_state.py` (selection model)
+- [Qt 6 QUndoStack Documentation](https://doc.qt.io/qt-6/qundostack.html) -- Command pattern, macro grouping, clean state tracking
+- [PySide6/PyQt6 QUndoStack](https://doc.qt.io/qtforpython-6/PySide6/QtGui/QUndoStack.html) -- Python bindings for undo framework
+- [Preserving comments when parsing and formatting code](https://jayconrod.com/posts/129/preserving-comments-when-parsing-and-formatting-code) -- Round-trip parsing architecture patterns
+- [Lossless Syntax Trees](https://dev.to/cad97/lossless-syntax-trees-280c) -- CST vs AST for round-trip editing
+- [OpenGL VBO Best Practices (Khronos Wiki)](https://www.khronos.org/opengl/wiki/Vertex_Specification_Best_Practices) -- glBufferSubData vs glBufferData guidance
+- [LearnOpenGL Advanced Data](https://learnopengl.com/Advanced-OpenGL/Advanced-Data) -- Partial buffer updates
 
 ---
-*Pitfalls research for: ABB RAPID Toolpath Viewer (Python + PyQt6 + PyOpenGL)*
-*Researched: 2026-03-30*
+*Pitfalls research for: ABB RAPID Toolpath Viewer v1.1 (Editing Milestone)*
+*Researched: 2026-04-01*

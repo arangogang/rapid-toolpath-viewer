@@ -1,235 +1,204 @@
 # Project Research Summary
 
-**Project:** ABB RAPID Toolpath Viewer
-**Domain:** Desktop 3D toolpath visualization / robot program verification
-**Researched:** 2026-03-30
+**Project:** ABB RAPID Toolpath Viewer — Milestone v1.1 Toolpath Editing
+**Domain:** Industrial robot program editor (Windows desktop, extending read-only viewer)
+**Researched:** 2026-04-01
 **Confidence:** HIGH
 
 ## Executive Summary
 
-This is a Windows desktop application for verifying ABB RAPID robot programs before deployment. The core workflow is: open a `.mod` file, see the 3D toolpath instantly, and navigate bidirectionally between waypoints in the 3D view and corresponding lines in the RAPID source code. The closest analog in the broader tooling landscape is NC Viewer for G-code — instant, zero-config, focused on visual verification. The primary differentiator over RobotStudio and other OLP tools is zero setup time: no robot model import, no station creation, no license management.
+This milestone extends a working read-only RAPID toolpath viewer into a constrained editing tool. The goal is not a full IDE — it is a surgical correction tool that lets robot engineers adjust waypoint coordinates, speed/zone parameters, and laser state before uploading programs to ABB controllers. The existing stack (Python 3.11 + PyQt6 + PyOpenGL + NumPy + pyrr) requires zero new dependencies to implement editing; all required capabilities ship with PyQt6's standard library (QUndoStack, QFormLayout, QDoubleSpinBox, QRubberBand). The architecture upgrade is additive: frozen parser tokens stay frozen, and a new mutable EditModel layer wraps them for editing operations.
 
-The recommended approach is a clean four-layer architecture (Parser -> Model -> Renderer -> UI) built strictly in dependency order. The parser is a pure Python regex-based two-pass parser with no Qt or OpenGL dependencies, testable in isolation. The model holds parsed data and broadcasts changes via Qt signals. The OpenGL renderer consumes data from the model through a VBO-based pipeline using OpenGL 3.3 Core Profile shaders. Bidirectional code-to-3D linking is implemented through index maps built at parse time, not maintained separately at runtime.
+The recommended approach builds editing on top of the existing signal-driven architecture using a strict separation between a mutable edit model and the immutable parse layer. The critical design decision — and the one most commonly gotten wrong in tools of this type — is the .mod serialization strategy. The export function must patch original source text at known line positions rather than regenerating the file from parsed data. Regeneration destroys comments, IF/WHILE logic, custom PROC structure, and any RAPID code the parser does not understand, making the tool unusable for real-world programs. Text patching is the only viable strategy and must be designed before any editing features ship.
 
-The dominant risk is parser fragility: real-world `.mod` files split declarations across multiple lines and use inconsistent whitespace. A naive line-by-line parser produces silent data loss (points disappear with no error). The second-highest risk is building the OpenGL renderer with immediate mode (`glBegin`/`glEnd`) instead of VBOs — this performs fine on small test files and requires a complete rewrite when tested against production files with 2,000–10,000 points. Both risks must be addressed in Phase 1 and Phase 2 respectively, as retrofitting either requires architectural changes, not localized fixes.
+The two highest-risk decisions are (1) whether to wire QUndoStack from the start or retrofit it later, and (2) whether to use text patching or reconstruction for export. Both are architectural commitments that cannot be made later without rewriting all editing features already built. Research confidence is high across all four areas — the stack is proven, the architecture is based on direct codebase analysis, and the pitfalls are grounded in observed failure modes of similar tools and the existing code's constraints.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The stack is defined by the user's explicit choices: Python 3.11+, PyQt6, and PyOpenGL. These are well-supported and integrate naturally. PyQt6's `QOpenGLWidget` provides the OpenGL surface; PyOpenGL 3.1.10 provides direct API access. The critical constraint is that PyQt6 on Windows creates an OpenGL Core Profile context by default, which means the fixed-function pipeline (glBegin/glEnd, glVertex, glLoadIdentity) will silently fail or crash. All rendering must use modern shaders, VBOs, and VAOs targeting OpenGL 3.3 Core Profile. There is no official ABB Python SDK for parsing `.mod` files from disk; a custom regex-based parser is the correct approach. `pyrr` provides 3D math (matrices, quaternions) and integrates natively with NumPy.
+The existing stack is sufficient. No new packages are needed. The key additions come from modules already bundled with PyQt6: `QUndoStack`/`QUndoCommand` (in `PyQt6.QtGui`) for undo/redo, standard widget classes (`QFormLayout`, `QDoubleSpinBox`, `QComboBox`) for the property panel, and `QRubberBand` for drag-selection. The mutable edit model uses stdlib `dataclasses.replace()`, which is already established in `main_window.py`. Export uses stdlib `pathlib.Path.write_text()`.
 
-**Core technologies:**
-- Python 3.11+: runtime — 3.11 provides significant performance gains; avoid 3.13 until C-extension deps confirm compatibility
-- PyQt6 6.10.x: GUI framework — QOpenGLWidget for OpenGL surface, Qt signals for component coordination
-- PyOpenGL 3.1.10: OpenGL bindings — direct API access; must use modern shader pipeline, not fixed-function
-- PyOpenGL-accelerate 3.1.10: C-accelerated PyOpenGL — always install alongside; 2–5x speedup for array operations
-- NumPy >=1.26: math and arrays — vertex buffers, coordinate transforms, robtarget data storage
-- pyrr 0.10.3: 3D math — view/projection matrices, arcball camera, quaternion operations; NumPy-native
-- uv: dependency management — faster than pip, lockfile support, reproducible builds
+**Core technologies (unchanged):**
+- Python 3.11+: runtime — no change needed
+- PyQt6 >=6.10: GUI + QUndoStack — adds undo framework and property panel widgets at no install cost
+- PyOpenGL >=3.1.10: OpenGL rendering — existing pipeline reused without modification
+- NumPy >=1.26: vertex buffers and coordinate math — batch selection highlight VBO
+- pyrr >=0.10.3: 3D math — unchanged
+
+**New capabilities unlocked from existing stack:**
+- `PyQt6.QtGui.QUndoStack` + `QUndoCommand`: full undo/redo with Ctrl+Z/Ctrl+Y, clean-state tracking, window title asterisk for unsaved changes
+- `dataclasses.replace()`: produce new frozen instances from edits (already used in `main_window.py` line 166)
+- `str.splitlines()` + line-index replacement: surgical .mod source patching with no external parser
+
+**What not to add:**
+- Jinja2/Mako: overkill for .mod text patching; use direct string manipulation instead
+- python-undo or similar: PyQt6's QUndoStack is better integrated; a second undo system creates competing state
+- attrs/pydantic: dataclasses are sufficient for the edit model
+- pandas: NumPy arrays cover all coordinate math needs
 
 ### Expected Features
 
-All ten table-stakes features must ship in v1. The dependency chain dictates order: file loading and parsing must come first, then 3D rendering with camera controls, then step-through playback, and finally bidirectional code-to-3D linking. Code-to-3D linking is the highest-dependency feature and must come last among the table-stakes items. It is also the core value proposition per PROJECT.md.
+The research confirmed a clear tier hierarchy. Single-waypoint coordinate editing is the #1 request on ABB community forums. Undo and Save As are non-negotiable — engineers will not use a tool without them. Multi-select and batch operations are the top differentiator but belong in v1.2 due to UI complexity. The feature dependency graph has a clear root: the mutable data model must exist before any editing feature can be built.
 
 **Must have (table stakes):**
-- `.mod` file loading via file dialog — entry point to the application
-- RAPID parser: MoveL, MoveJ, MoveC, MoveAbsJ extraction — covers 95%+ of real programs
-- robtarget / jointtarget data parsing — raw material for visualization
-- 3D path rendering with move-type distinction (MoveL=solid, MoveJ=dashed, MoveC=arc) — every competitor does this
-- Waypoint markers at each robtarget — position identification
-- Mouse camera controls (orbit, zoom, pan) — without these the 3D view is unusable
-- XYZ coordinate axes indicator — spatial orientation reference
-- Step forward/back through waypoints — sequential verification workflow
-- RAPID code panel with syntax highlighting — code context alongside 3D view
-- Bidirectional code-to-3D linking — the killer feature; click point to see code, click code to see point
+- Single waypoint selection in 3D — required before any editing action; extends existing ray-cast picking
+- Waypoint info panel — coordinate, speed, zone, laser state display on selection
+- Coordinate modification (offset-based, not absolute) — #1 edit operation for robot engineers; absolute input risks dangerous typos
+- Speed and zone property editing — second most common edit; use dropdown for constrained RAPID values
+- Laser on/off toggle — domain-specific table stake for laser welding/cutting application
+- Save As / Export modified .mod — editing without export is useless; "Save As" only, never overwrite
+- Undo/Redo — engineers will not edit without a safety net; must be wired before any edit feature
+- Delete waypoint — remove erroneous or unnecessary points with topology reconnection choice
 
-**Should have (v1.x after validation):**
-- TCP orientation frames at waypoints — catches orientation errors invisible in position-only views
-- Playback animation with speed control — when step-through feels too slow for long programs
-- Speed/zone data overlay — "why is this segment slow?"
-- Multi-procedure support (PROC selection) — real files contain multiple routines
-- Path statistics panel (length, point count, move breakdown) — low effort, high info value
-- Search in code panel — when files exceed ~200 lines
+**Should have (differentiators):**
+- Real-time 3D update on edit — immediate visual feedback when property values change
+- Dirty state indicator — asterisk in title bar, "Save changes?" prompt on close
+- Multi-select + batch offset — select multiple points, apply same offset to all; deferred to v1.2
+- Coordinate system display (world + wobj frame) — engineers think in workobject coordinates
 
-**Defer (v2+):**
-- Wobj frame visualization and coordinate transform — important but complex; data model must support it from day one even if rendering is deferred
-- Export path as CSV/point cloud
-- Simple STL workpiece overlay
-- Multi-module loading
-- Robot arm 3D model / kinematic simulation — explicit out-of-scope per PROJECT.md
+**Defer to v1.2:**
+- Multi-select and batch operations — valuable but adds significant UI complexity; single-point covers 80% of use cases
+- Visual diff (original vs modified ghost overlay) — nice to have, not blocking
+- Insert waypoint — high complexity (new robtarget generation + source insertion)
+- 3D drag gizmos — high effort, low precision; engineers prefer numeric input
+
+**Explicit anti-features:**
+- In-place RAPID code editing — scope creep into IDE territory; code panel stays read-only
+- Robot arm / IK visualization — RobotStudio's domain
+- Collision detection — requires CAD mesh import
+- Overwrite save — robot production files must not be silently overwritten
 
 ### Architecture Approach
 
-The application follows a strict four-layer MVP architecture: Parser (pure Python, no Qt) -> Model (Qt QObject with signals, no OpenGL) -> Renderer (OpenGL only, reads from model) -> UI (Qt widgets, no OpenGL). All cross-component communication flows through the ToolpathModel via Qt signals — views never talk to each other directly. Bidirectional code-to-3D linking is implemented through two dictionaries built at parse time (`line_to_waypoint` and `waypoint_to_line`), stored in the model, and queried by the controller when either a 3D point or a code line is clicked. The playback state machine is an enum-based FSM driven by QTimer, providing four states: IDLE, STOPPED, PLAYING, PAUSED.
+The architecture change is additive: the parse pipeline is unchanged, and a new mutable EditModel layer sits between ParseResult and the UI. The key architectural win is that `EditModel.to_parse_result()` produces output compatible with the existing `build_geometry()` function — the entire rendering pipeline is reused without modification. All edits flow through an EditController which handles scene rebuild after mutations. A new ModWriter module patches original source text at known `source_line` positions, applying patches bottom-to-top to keep line numbers valid.
 
-**Major components:**
-1. RapidParser (`parser/`) — pure Python regex two-pass parser; produces immutable ParseResult; testable without GUI
-2. ToolpathModel (`model/toolpath_model.py`) — central data model; emits Qt signals on change; stores waypoints, segments, source text, line maps
-3. PlaybackStateMachine (`model/playback.py`) — enum FSM with QTimer; drives step/play/pause; emits `index_changed`
-4. GLViewport (`viewer/gl_viewport.py`) — QOpenGLWidget subclass; owns the OpenGL context; delegates to sub-renderers
-5. SceneRenderer (`viewer/scene_renderer.py`) — VBO-based batch rendering; separate draw methods per visual type
-6. PickingEngine (`viewer/picking.py`) — color-based offscreen picking; encodes waypoint index as RGB, reads pixel on click
-7. Camera (`viewer/camera.py`) — arcball orbit, pan, zoom; maintains view matrix; updates on mouse events
-8. AppController (`controller.py`) — wires model signals to views; translates view events to model mutations
-9. CodePanel (`ui/code_panel.py`) — QPlainTextEdit with line highlighting; emits `line_clicked` signal
-10. MainWindow (`ui/main_window.py`) — QMainWindow layout; splitter with code panel and 3D viewport
+**Major components (new):**
+1. `EditModel` (`model/edit_model.py`) — mutable working copy of ParseResult; owns selection state; emits Qt signals on change; single source of truth for all editing operations
+2. `EditableMove` (inner class of EditModel) — mutable wrapper around frozen `MoveInstruction`; tracks `is_modified` per field for surgical export patching
+3. `EditController` (`model/edit_controller.py`) — command dispatch between PropertyPanel and EditModel; triggers scene rebuild; QUndoStack integration point
+4. `PropertyPanel` (`ui/property_panel.py`) — QFormLayout-based inspector showing/editing waypoint properties; offset-based coordinate input (not absolute); speed/zone via QComboBox
+5. `ModWriter` (`export/mod_writer.py`) — exports modified .mod by patching original source text; applies changes bottom-to-top to preserve line number validity throughout the patch sequence
+
+**Existing components requiring moderate changes:**
+- `MainWindow`: add 3-way QSplitter, QUndoStack instance, Edit menu, File > Save As action
+- `ToolpathGLWidget`: add Ctrl+click multi-select, selection highlight VBO, emit modifier key state
+- `CodePanel`: update displayed text after edits (observe mutable document rather than original source_text)
+
+**Patterns to follow:**
+- Immutable core / mutable wrapper: parser tokens stay frozen; EditableMove wraps them
+- Signal-driven updates: all state flows through Qt signals; no direct cross-component calls
+- Controller mediates mutations: PropertyPanel never calls EditModel directly
+- Full scene rebuild on edit: `build_geometry()` + `update_scene()` is fast enough for <5000 moves
+- Source patching for export: patch original source_text, never regenerate
+
+**Anti-patterns to avoid:**
+- Making parser dataclasses mutable: breaks `__hash__`, corrupts `targets` dict lookups
+- In-place source text mutation during editing: shifts line numbers and invalidates all `source_line` references
+- Dual source of truth for move list: both PlaybackState and EditModel holding separate copies leads to desync
+- Direct GL widget mutation from PropertyPanel: bypasses EditModel, loses change tracking, breaks undo
 
 ### Critical Pitfalls
 
-1. **Multiline robtarget declarations** — parse the entire file as a single string; use semicolons as statement terminators; never parse line-by-line. Real `.mod` files split declarations arbitrarily. Silent data loss (points disappear with no error) is the failure mode.
+1. **Frozen dataclass mutation (rewrite risk)** — Do not remove `frozen=True` from `MoveInstruction` or `RobTarget`. Unfreezing breaks custom `__hash__` and corrupts the `targets` dict. Use `dataclasses.replace()` to produce new frozen instances; this pattern is already established in `main_window.py`.
 
-2. **Immediate mode OpenGL** — use VBOs from the first line of rendering code; never use `glBegin`/`glEnd`. Works on 50-point test files, becomes unusably slow (sub-10 FPS) at 500+ points, requires complete rewrite to fix.
+2. **Serialization destroys .mod content (feature DOA)** — Never reconstruct .mod from parsed data. The parser discards comments, IF/ELSE blocks, custom PROCs, and all non-move content intentionally. Use text patching: locate the source line via `source_line` metadata, regex-replace only the changed values, apply patches bottom-to-top. This is the single highest-risk architectural decision.
 
-3. **QOpenGLWidget context not current outside paintGL** — call `self.makeCurrent()` before any GL operation outside `initializeGL`/`paintGL`/`resizeGL`, or use the deferred update pattern (set dirty flag, call `self.update()`, do GL work in paintGL). Crashes on second file load are the failure mode.
+3. **Undo/redo cannot be retrofitted (rewrite risk)** — Wire QUndoStack before implementing any edit feature. Every mutation must be a QUndoCommand subclass from day one. Retrofitting undo after building editing features requires rewriting every edit operation. Use `beginMacro`/`endMacro` for compound operations like delete+reconnect.
 
-4. **ABB quaternion convention** — ABB uses `[q1, q2, q3, q4]` = `[w, x, y, z]` (scalar-first). scipy and many libraries expect `[x, y, z, w]` (scalar-last). Define internal convention once, add an explicit conversion function at every library boundary. Wrong orientations that look "almost right" are the failure mode.
+4. **Signal loops from multiple selection observers** — With 4 components observing selection state (3D widget, code panel, playback state, property panel), circular signal chains cause infinite loops or stale UI. Keep PlaybackState as the single source of truth for index. Use `blockSignals(True)` when programmatically updating UI controls that emit change signals.
 
-5. **Step-to-line desync** — bind source line numbers to each MoveInstruction in the parser output, not as a parallel list. Never assume `point_index == line_number`. Highlighting that drifts progressively as files grow is the failure mode.
+5. **Delete waypoint topology corruption** — Deleting waypoint B from A->B->C silently creates an A->C connection. MoveC arcs become invalid if their intermediate point is deleted. Implement deletion as a multi-step operation with user confirmation; use soft-delete (mark as disabled) to make undo trivial.
+
+6. **PROC filter + EditModel index mismatch** — The existing PROC filter creates a filtered view using `dataclasses.replace()`. Edits made in a filtered view must reference canonical (unfiltered) move indices, not filtered list indices. EditModel must be the canonical source; filtering re-applies after every edit.
 
 ## Implications for Roadmap
 
-Based on research, the architecture's build-order dependencies and the pitfall-to-phase mapping both point to a six-phase structure that mirrors the component dependency graph from ARCHITECTURE.md.
+Based on the feature dependency graph (FEATURES.md), architecture build order (ARCHITECTURE.md), and pitfall-to-phase mapping (PITFALLS.md), the editing milestone should be structured in four phases. The dependency chain is deterministic: EditModel first (all editing depends on it), undo infrastructure at the same time, visual inspection before mutation, mutations before export.
 
-### Phase 1: Parser Foundation
+### Phase 1: Mutable Edit Model + Undo Infrastructure
 
-**Rationale:** Every other component depends on parsed data. The parser must be correct before any UI or rendering work begins. The two most severe pitfalls (multiline declarations, step-to-line desync) must be addressed here. The parser is pure Python with no Qt/OpenGL deps and can be fully tested immediately.
+**Rationale:** The feature dependency graph from FEATURES.md shows the mutable data model as the root dependency of all editing operations — no edit feature can be built without it. PITFALLS.md ranks undo retrofit as a rewrite-level risk (Pitfall 3). Both must be established before any editing UI exists. This phase produces no visible editing UI but is entirely unit-testable in isolation, providing a safe foundation.
+**Delivers:** `EditModel` with `EditableMove` wrapper, `EditController` stub, QUndoStack wired into MainWindow with Edit menu (Undo/Redo/Delete disabled until file loaded), PROC filter updated to reference canonical EditModel indices
+**Addresses:** Mutable data model (root dependency), undo infrastructure, PROC filter architecture
+**Avoids:** Pitfall 1 (frozen mutation via dataclasses.replace()), Pitfall 3 (undo retrofit), Pitfall 6 (PROC filter index mismatch), Pitfall 12 (signal loops — establish single source of truth discipline from the start)
 
-**Delivers:** Working `parse_module()` function that accepts a `.mod` file path and returns a `ParseResult` with waypoints, path segments, bidirectional line maps, and source text. Parser handles multiline declarations, all three storage classes (CONST/VAR/PERS), all four move types (MoveL, MoveJ, MoveC, MoveAbsJ), Offs() expressions, and stores wobj references for future use.
+### Phase 2: Property Panel + Selection Enhancement
 
-**Features addressed:** RAPID parser (MoveL/MoveJ/MoveC/MoveAbsJ), robtarget/jointtarget extraction
+**Rationale:** Once EditModel exists, the property panel is the first user-visible editing feature. ARCHITECTURE.md recommends building the panel read-only first to validate signal wiring before adding mutation complexity. This phase also handles the 3-way splitter layout change in MainWindow and the selection highlight infrastructure in the GL widget.
+**Delivers:** PropertyPanel (read-only display), 3-way QSplitter layout (GL | Property | Code at 55/20/25%), Ctrl+click multi-select in ToolpathGLWidget, selection highlight VBO, dirty state indicator in title bar
+**Addresses:** Waypoint info panel (table stake), single waypoint selection in 3D, real-time 3D feedback for selection changes
+**Avoids:** Pitfall 5 (signal loops — PropertyPanel observes EditModel via signals, never calls GL widget directly), Pitfall 11 (accidental edits — explicit selection required before editing is possible)
 
-**Pitfalls to avoid:** Multiline robtarget declarations (Pitfall 1), step-to-line desync (Pitfall 7), MoveC structure capture (Pitfall 5), wobj reference storage (Pitfall 6)
+### Phase 3: Edit Operations + QUndoCommand Integration
 
----
+**Rationale:** With EditModel and PropertyPanel in place, all edit operations (coordinate offset, speed, zone, laser, delete) can be built using a consistent QUndoCommand pattern. ARCHITECTURE.md confirms full scene rebuild is fast enough (< 50ms for typical files) so no GL optimization is needed for v1.1. FEATURES.md recommends this build order within the phase: coordinate modification first, then speed/zone, then delete.
+**Delivers:** Coordinate offset editing with immediate 3D update, speed/zone editing via QComboBox with RAPID value validation, laser toggle, waypoint deletion with topology warning and soft-delete for easy undo, all operations wrapped in QUndoCommands, Edit Mode toggle to prevent accidental edits during camera navigation
+**Addresses:** All 8 table stake editing features from FEATURES.md
+**Avoids:** Pitfall 4 (GL rebuild — use full rebuild, not incremental, for simplicity), Pitfall 6 (delete topology — confirmation dialog + MoveC warning), Pitfall 7 (stale source_line — track edits as patch list, not source_text mutation), Pitfall 10 (speed/zone validation via dropdown + format check), Pitfall 11 (Edit Mode toggle)
 
-### Phase 2: 3D Viewer Foundation
+### Phase 4: Save As / .mod Export
 
-**Rationale:** The 3D view is the primary output of the application. Camera controls are a prerequisite for any useful 3D rendering. VBO architecture must be established here — retrofitting it later requires a complete rewrite. OpenGL context management patterns must be established in the first QOpenGLWidget implementation.
-
-**Delivers:** QOpenGLWidget with arcball camera (orbit/zoom/pan), VBO-based path rendering with move-type color distinction (MoveL=solid, MoveJ=dashed, MoveC=arc), waypoint markers, XYZ coordinate axes indicator, auto-fit camera to bounding box on file load.
-
-**Features addressed:** 3D path rendering with move-type distinction, waypoint markers, camera controls, coordinate axes indicator
-
-**Pitfalls to avoid:** Immediate mode rendering (Pitfall 3), QOpenGLWidget context management (Pitfall 4), MoveC arc rendering (Pitfall 5), quaternion convention (Pitfall 2)
-
-**Stack elements:** QOpenGLWidget, PyOpenGL 3.1.10 with VBOs/VAOs/shaders, GLSL vertex+fragment shaders, pyrr for camera math, NumPy float32 arrays
-
----
-
-### Phase 3: Model and Data Integration
-
-**Rationale:** With parser (Phase 1) and renderer (Phase 2) independently working, the model layer ties them together. ToolpathModel becomes the single source of truth. This phase wires file loading through the full pipeline: file dialog -> parser -> model -> renderer + code panel update.
-
-**Delivers:** ToolpathModel with Qt signals, AppController wiring model to viewer, file load end-to-end (open `.mod` file and see 3D path), CodePanel displaying raw RAPID source, basic syntax highlighting for RAPID keywords.
-
-**Features addressed:** `.mod` file loading, RAPID code panel with syntax highlighting
-
-**Architecture component:** ToolpathModel, AppController, CodePanel, MainWindow layout
-
----
-
-### Phase 4: Playback and Code Sync
-
-**Rationale:** Step-through playback and bidirectional code-to-3D linking are the core value proposition. Both depend on all previous phases. The PlaybackStateMachine drives index changes; the bidirectional line maps built in Phase 1 make code sync possible.
-
-**Delivers:** Step forward/back through waypoints with 3D highlight of current point, code panel auto-scroll and line highlight synchronized with 3D selection, click-on-3D-point highlights code line, click-on-code-line highlights 3D point. Play/pause auto-playback with QTimer.
-
-**Features addressed:** Step-through playback, bidirectional code-to-3D linking
-
-**Pitfalls to avoid:** Step-to-line desync (Pitfall 7 — depends on Phase 1 storing line numbers correctly), QTextEdit/3D selection feedback loops (blockSignals guard needed)
-
-**Architecture component:** PlaybackStateMachine, PickingEngine (color-based picking)
-
----
-
-### Phase 5: Polish and UX Completeness
-
-**Rationale:** After the core loop (open file -> see path -> verify) works end-to-end, UX gaps that affect daily usability are addressed. These are low-to-medium complexity improvements with high user impact.
-
-**Delivers:** Parse error feedback with line number and partial results, coordinate readout (x, y, z displayed on point selection), drag-and-drop file loading, camera fit-to-view hotkey, window title showing loaded filename, graceful handling of files with only MoveAbsJ instructions.
-
-**Features addressed:** UX pitfalls from PITFALLS.md (no error feedback, no coordinate readout, camera at origin)
-
----
-
-### Phase 6: v1.x Enhancements
-
-**Rationale:** After the tool is validated with real users, add the differentiating features that require the core to be stable first. TCP orientation frames require confirmed quaternion convention. Multi-procedure support requires parser to handle PROC boundaries. Speed/zone overlay requires speeddata extraction (parseable but deferred in v1).
-
-**Delivers:** TCP orientation frames (RGB axis triads at each waypoint), multi-procedure PROC selection, speed/zone data text overlay, path statistics panel (length, point count, move type breakdown), search in code panel.
-
-**Features addressed:** TCP orientation frames, multi-procedure support, speed/zone overlay, path statistics, code search
-
-**Pitfalls to avoid:** Quaternion convention must be verified before orientation frame rendering (Pitfall 2)
-
----
+**Rationale:** ARCHITECTURE.md notes ModWriter only depends on EditModel (not on PropertyPanel or EditController), so it can theoretically be built in parallel with Phase 3. Placing it last ensures the text-patching engine is designed with a complete picture of all edit types it must handle — coordinate, speed, zone, laser, and delete. This is the "capstone" that makes all edits permanent. The serialization strategy (text patching) must be validated against real-world .mod files including the sample `00_CoCr_19.2pi_Shear_Test.mod` before shipping.
+**Delivers:** ModWriter with source text patching (bottom-to-top patch application preserving line number validity), File > Save As menu action with QFileDialog (Ctrl+Shift+S), code panel refresh after edits so modified values appear in the source view, Offs() dependency warning displayed in PropertyPanel for affected targets
+**Addresses:** Save As / Export (final table stake), code panel sync, Offs() transparency
+**Avoids:** Pitfall 2 (serialization destroys content — text patching, not regeneration), Pitfall 7 (stale line numbers — patches reference original source_line from ParseResult, applied at export time only), Pitfall 8 (Offs() dependencies — display warning rather than silent stale positions), Pitfall 9 (code panel stale — single mutable document as source of truth)
 
 ### Phase Ordering Rationale
 
-- Parser before renderer: the renderer needs correctly typed data structures to build VBOs; building renderer first would require replacing placeholder data later
-- VBOs before any real data: retrofitting VBO architecture into immediate-mode code requires complete rewrite; this is the highest-cost mistake to make late
-- Model layer after both parser and renderer have working data contracts: the model's signal interface can be designed knowing what both consumers need
-- Playback after model: the PlaybackStateMachine owns a QTimer and calls `model.set_selection()`; it cannot be built without the model
-- Code sync last among core features: requires parser line numbers (Phase 1), 3D highlighting (Phase 2), model signals (Phase 3), and step playback (Phase 4) all working
-- UX polish after core loop: error handling is not meaningful until all the paths that can produce errors exist
+- EditModel must come first because FEATURES.md's dependency graph shows it as the root of all editing operations; no edit feature can exist without it
+- QUndoStack wired in Phase 1 (not Phase 3) because PITFALLS.md identifies undo retrofit as a full-rewrite risk; every QUndoCommand subclass in Phase 3 is trivial to write if the stack is already wired
+- PropertyPanel built read-only in Phase 2 before mutations are added; this validates the EditModel signal wiring without the complexity of mutations, reducing the debugging surface when edits are introduced
+- Save As placed last because the ModWriter design benefits from knowing all edit types it must handle; building it early risks missing a case and requiring a redesign of the patch format
+- This order avoids all critical pitfalls by design: the mutable wrapper is established before any UI (Pitfall 1), the serialization strategy is committed to at architecture time (Pitfall 2), undo is wired before mutations (Pitfall 3), selection architecture is clean before adding the fourth observer (Pitfall 5), delete topology is handled alongside the delete command (Pitfall 6)
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 2 (3D Viewer):** Dashed line rendering in OpenGL Core Profile is non-trivial (no `glLineStipple` in core profile); fragment shader discard approach needs a concrete implementation; MoveC arc geometry (circumcenter of three points) needs a verified implementation
-- **Phase 4 (Playback + Code Sync):** QTextEdit signal feedback loops when programmatically setting selection are a known Qt issue; the `blockSignals` pattern needs careful implementation to avoid double-highlight bugs
-- **Phase 6 (TCP Orientation):** Quaternion-to-rotation-matrix pipeline must be verified against known ABB test cases before shipping; orientation frame scale relative to bounding box needs tuning
+- **Phase 4 (Save As / Export):** The text-patching engine must handle three robtarget declaration variants: named target (`CONST robtarget p10 := ...`), `Offs()` reference in the move instruction, and inline bracket data. Verify all three formats against the sample `00_CoCr_19.2pi_Shear_Test.mod` file before implementing. The regex patterns for each variant need validation.
+- **Phase 3 (Delete):** MoveC arc topology handling requires understanding the parser's internal representation of MoveC (via-point + endpoint pair). Inspect `tokens.py` and `rapid_parser.py` for MoveC handling before implementing deletion for MoveC instructions to avoid the arc-becomes-invalid case silently.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 1 (Parser):** Regex-based statement tokenizer with semicolon delimiters is a well-understood pattern; ABB RAPID syntax is fully documented in the Technical Reference Manual
-- **Phase 3 (Model + Integration):** Qt Model-View-Presenter with signals/slots is extensively documented; QSplitter layout, QFileDialog, QPlainTextEdit syntax highlighting are all standard Qt patterns
-- **Phase 5 (UX Polish):** Standard Qt patterns throughout; no novel technical challenges
+- **Phase 1 (EditModel + Undo):** QUndoStack is well-documented in Qt 6.11 official docs. `dataclasses.replace()` is stdlib. The pattern is already used in the codebase. No novel technical challenges.
+- **Phase 2 (PropertyPanel):** QFormLayout, QDoubleSpinBox, QComboBox, QSplitter are standard Qt widgets. Verified in Qt 6.11 docs. No research needed.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | PyQt6, PyOpenGL, pyrr, NumPy are all verified on PyPI with confirmed version numbers; QOpenGLWidget Core Profile behavior on Windows confirmed via Qt forum sources; ABB RAPID robtarget format confirmed against official ABB Technical Reference Manual |
-| Features | MEDIUM-HIGH | Table-stakes features derived from competitor analysis (RobotStudio, NC Viewer, RoboDK) and PROJECT.md requirements; v1.x and v2+ features are reasoned from user workflow patterns, not validated with real users |
-| Architecture | HIGH | MVP via Qt signals is the standard PyQt architecture; build order derived from strict data dependency analysis; code examples verified against PyQt6 API; color-based picking is a well-established OpenGL pattern |
-| Pitfalls | HIGH | Parser pitfalls verified against ABB documentation and community forum discussion; OpenGL performance characteristics confirmed against PyOpenGL documentation; Qt context management rules confirmed against Qt 6 official docs |
+| Stack | HIGH | No new dependencies. All capabilities verified in PyQt6 6.10/6.11 official documentation. QUndoStack confirmed in QtGui module (not just QtWidgets). `dataclasses.replace()` usage already present in codebase. |
+| Features | MEDIUM-HIGH | Table stakes confirmed via ABB community forum threads and RobotStudio/RoboDK competitive analysis. Domain-specific laser toggle not independently validated against other ABB laser cell tools — assumed correct from PROJECT.md context. |
+| Architecture | HIGH | Based on direct analysis of all existing modules (`tokens.py`, `rapid_parser.py`, `geometry_builder.py`, `toolpath_gl_widget.py`, `main_window.py`, `playback_state.py`). Component boundaries, signal patterns, and integration points are derived from actual code, not inference. |
+| Pitfalls | HIGH | Pitfalls 1–6 grounded in direct codebase risk analysis. Serialization pitfall confirmed by round-trip parsing literature. GL rebuild pitfall confirmed by OpenGL VBO documentation. QUndoStack guidance from Qt official docs. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **MoveAbsJ handling:** jointtargets contain joint angles, not Cartesian positions; v1 behavior is undefined — options are skip gracefully, show as "no position" marker, or estimate using forward kinematics (not recommended for v1). Decide before Phase 1 parser design is finalized.
+- **Offs() target variant coverage in export:** The parser resolves `Offs(base, dx, dy, dz)` to standalone `RobTarget` instances with no stored back-reference. The ModWriter must handle this case, but the exact source text format of `Offs()` occurrences (inline in move instruction vs. separate variable assignment) needs verification against the sample .mod file before Phase 4. At minimum, display a warning in PropertyPanel when the selected target was derived via Offs().
 
-- **wobj coordinate frame resolution:** Phase 1 must capture wobj references in the data model even if full transform resolution is deferred to v2. The exact data structure for storing wobjdata (user frame + object frame transform chain) needs to be designed before parser implementation.
+- **MoveC arc representation in delete:** PITFALLS.md identifies MoveC deletion as a special case requiring user confirmation. The exact parser representation of MoveC's via-point and endpoint (separate MoveInstruction entries vs. a single compound entry) must be confirmed in `tokens.py` before Phase 3 delete implementation to avoid silent arc corruption.
 
-- **MoveC arc rendering edge case:** Three collinear points (degenerate circle) must fall back to a straight line without crashing. This edge case needs a specific test fixture.
+- **Code panel refresh strategy:** Pitfall 9 requires the code panel to observe a single mutable document rather than the original `source_text`. The exact mechanism — whether EditController pushes patched text to CodePanel after each edit, or whether CodePanel subscribes to an EditModel signal — should be decided in Phase 2 (when PropertyPanel is wired) rather than Phase 3 (when the first mutation happens).
 
-- **File encoding:** Real `.mod` files from older RobotStudio versions may use Windows-1252 or other non-UTF-8 encodings. The file loader should detect and handle encoding gracefully (try UTF-8, fall back to cp1252).
-
-- **User validation:** No real users have tested any assumptions about features beyond the stated PROJECT.md requirements. v1.x feature prioritization (TCP orientation vs. multi-procedure vs. speed overlay) should be validated with at least one robot engineer before Phase 6 planning.
+- **PROC filter index mapping implementation:** Pitfall 12 requires edits to reference canonical (unfiltered) move indices. The Phase 1 EditModel design must explicitly address how filtered view indices map back to canonical indices. The existing `dataclasses.replace(self._parse_result, moves=filtered_moves)` pattern creates a disconnected copy — EditModel must be the canonical source and filtering must re-apply from it.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [ABB RAPID Technical Reference Manual](https://library.e.abb.com/public/688894b98123f87bc1257cc50044e809/Technical%20reference%20manual_RAPID_3HAC16581-1_revJ_en.pdf) — robtarget data type, quaternion convention, MoveL/MoveJ/MoveC/MoveAbsJ specifications
-- [ABB RAPID Instructions Reference](https://library.e.abb.com/public/b227fcd260204c4dbeb8a58f8002fe64/Rapid_instructions.pdf) — Move instruction syntax, argument structure
-- [Qt 6 QOpenGLWidget Documentation](https://doc.qt.io/qt-6/qopenglwidget.html) — context management, FBO handling, cleanup patterns
-- [PyQt6 on PyPI](https://pypi.org/project/PyQt6/) — version 6.10.2 confirmed
-- [PyOpenGL on PyPI](https://pypi.org/project/PyOpenGL/) — version 3.1.10 confirmed
-- [Qt Forum: Shader-based OpenGL in PyQt6](https://forum.qt.io/topic/137468/a-few-basic-changes-in-pyqt6-and-pyside6-regarding-shader-based-opengl-graphics) — Core Profile requirements confirmed
+- Qt 6.11 official documentation (QUndoStack, QUndoCommand, QFormLayout, QUndoStack overview, Undo Framework Example) — undo framework API, integration patterns, and implementation reference
+- Direct codebase analysis of `tokens.py`, `rapid_parser.py`, `geometry_builder.py`, `toolpath_gl_widget.py`, `main_window.py`, `playback_state.py` — architecture baseline and pitfall identification grounded in actual code
+- ABB RAPID Technical Reference Manual (3HAC16581-1) — robtarget data type, MoveL/MoveJ/MoveC syntax, speed and zone data types
+- OpenGL VBO best practices (Khronos Wiki, LearnOpenGL Advanced Data) — glBufferSubData vs glBufferData guidance for GL rebuild pitfall
 
 ### Secondary (MEDIUM confidence)
-- [NC Viewer](https://ncviewer.com/) — G-code viewer as closest analog; feature comparison basis
-- [PyQt6 ModelView Architecture Tutorial](https://www.pythonguis.com/tutorials/pyqt6-modelview-architecture/) — MVP pattern implementation reference
-- [ABB RobotStudio Desktop](https://www.abb.com/global/en/areas/robotics/products/software/robotstudio-suite/robotstudio-desktop) — competitor feature set reference
-- [ABB Quaternion Convention Forum](https://forums.robotstudio.com/discussion/9435/quaternion-orientation) — ABB `[q1=w, q2=x, q3=y, q4=z]` convention confirmed
-- [GERTY RobTarget documentation](https://batpartners.github.io/en/datatype/DataType-RobTarget/) — robtarget structure reference
+- ABB RobotStudio and RoboDK documentation — competitive feature analysis for table stakes; confirms coordinate modification and speed/zone editing as top user needs
+- ABB community forums (robotstudio.com/discussion/10759, discussion/8547) — direct confirmation that coordinate modification is the #1 request for simple program editors
+- ABB Developer Center Undo-Redo article — reference for RobotStudio's own command pattern implementation
 
-### Tertiary (LOW confidence)
-- [500 Lines: A 3D Modeller](https://aosabook.org/en/500L/a-3d-modeller.html) — scene graph and picking architecture patterns (general, not RAPID-specific)
-- [PyOpenGL VBO dtype issue](https://github.com/mcfletch/pyopengl/issues/5) — float64 vs float32 performance trap
+### Tertiary (MEDIUM confidence)
+- Round-trip parsing literature (jayconrod.com "Preserving comments when parsing", lossless syntax trees article) — validation of text patching vs AST regeneration strategy for editors that must preserve formatting
 
 ---
-*Research completed: 2026-03-30*
+*Research completed: 2026-04-01*
 *Ready for roadmap: yes*
