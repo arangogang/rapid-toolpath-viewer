@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Toolpath Editing
 status: Not started (roadmap created)
-stopped_at: Phase 4 context gathered
-last_updated: "2026-04-01T07:54:37.008Z"
+stopped_at: Phase 4 UI-SPEC approved
+last_updated: "2026-04-01T08:03:55.670Z"
 last_activity: 2026-04-01 -- Roadmap created for v1.1
 progress:
   total_phases: 6
@@ -116,6 +116,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-01T07:54:37.001Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-edit-infrastructure-selection-and-inspection/04-CONTEXT.md
+Last session: 2026-04-01T08:03:55.663Z
+Stopped at: Phase 4 UI-SPEC approved
+Resume file: .planning/phases/04-edit-infrastructure-selection-and-inspection/04-UI-SPEC.md
