@@ -1,8 +1,9 @@
 # Roadmap: ABB RAPID Toolpath Viewer
 
-## Overview
+## Milestones
 
-This project delivers a Windows desktop application that opens ABB RAPID .mod files and renders 3D toolpaths with bidirectional code-to-3D linking. The build follows the data dependency chain: parser first (all other components consume parsed data), then 3D rendering with camera controls, then the interactive features (playback, code panel, linking) that tie everything together into the core verification workflow.
+- v1.0 MVP - Phases 1-3 (shipped 2026-03-30)
+- v1.1 Toolpath Editing - Phases 4-6 (in progress)
 
 ## Phases
 
@@ -12,11 +13,27 @@ This project delivers a Windows desktop application that opens ABB RAPID .mod fi
 
 Decimal phases appear between their surrounding integers in numeric order.
 
+<details>
+<summary>v1.0 MVP (Phases 1-3) - SHIPPED 2026-03-30</summary>
+
 - [x] **Phase 1: Parser and File Loading** - Parse .mod files into structured data with all move types, robtargets, and source line tracking (completed 2026-03-30)
-- [x] **Phase 2: 3D Viewer and Camera** - Render toolpaths in 3D with VBO pipeline and mouse-driven camera controls
+- [x] **Phase 2: 3D Viewer and Camera** - Render toolpaths in 3D with VBO pipeline and mouse-driven camera controls (completed 2026-03-30)
 - [x] **Phase 3: Playback, Code Panel, and Linking** - Step through waypoints, view RAPID code, and navigate bidirectionally between 3D view and source (completed 2026-03-30)
 
+</details>
+
+### v1.1 Toolpath Editing (In Progress)
+
+**Milestone Goal:** Add toolpath selection, inspection, modification, and .mod export so engineers can make surgical corrections before uploading to ABB controllers.
+
+- [ ] **Phase 4: Edit Infrastructure, Selection, and Inspection** - Mutable edit model with undo/redo, waypoint selection with multi-select, and read-only property panel
+- [ ] **Phase 5: Modification Operations** - Coordinate offset, speed/zone/laser editing, waypoint deletion, and point insertion via QUndoCommands
+- [ ] **Phase 6: Export** - Save modified .mod file via source text patching that preserves original formatting and comments
+
 ## Phase Details
+
+<details>
+<summary>v1.0 MVP Phase Details (Phases 1-3)</summary>
 
 ### Phase 1: Parser and File Loading
 **Goal**: User can open a .mod file and the application correctly extracts all move instructions, robtarget positions, and source line mappings into a structured data model
@@ -30,9 +47,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [x] 01-01-PLAN.md — Project skeleton, data model contracts, regex patterns, test infrastructure
-- [x] 01-02-PLAN.md — RAPID parser implementation (TDD: tokenizer, two-pass parser, all move types)
-- [x] 01-03-PLAN.md — PyQt6 MainWindow with file dialog and title bar update
+- [x] 01-01-PLAN.md -- Project skeleton, data model contracts, regex patterns, test infrastructure
+- [x] 01-02-PLAN.md -- RAPID parser implementation (TDD: tokenizer, two-pass parser, all move types)
+- [x] 01-03-PLAN.md -- PyQt6 MainWindow with file dialog and title bar update
 
 ### Phase 2: 3D Viewer and Camera
 **Goal**: User sees the parsed toolpath rendered in 3D with move-type visual distinction, waypoint markers, and can freely navigate the view with mouse controls
@@ -47,10 +64,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [x] 02-01-PLAN.md — Dependencies, geometry builder (ParseResult->vertex arrays, arc tessellation), shader source constants
-- [x] 02-02-PLAN.md — ArcballCamera (orbit/pan/zoom math, view/projection/mvp matrices, unit tests)
-- [x] 02-03-PLAN.md — ToolpathGLWidget (QOpenGLWidget VBO/VAO pipeline, mouse events, axes indicator, MainWindow wiring)
-- [x] 02-04-PLAN.md — Visual verification checkpoint (human confirms render quality and camera interaction)
+- [x] 02-01-PLAN.md -- Dependencies, geometry builder (ParseResult->vertex arrays, arc tessellation), shader source constants
+- [x] 02-02-PLAN.md -- ArcballCamera (orbit/pan/zoom math, view/projection/mvp matrices, unit tests)
+- [x] 02-03-PLAN.md -- ToolpathGLWidget (QOpenGLWidget VBO/VAO pipeline, mouse events, axes indicator, MainWindow wiring)
+- [x] 02-04-PLAN.md -- Visual verification checkpoint (human confirms render quality and camera interaction)
 
 ### Phase 3: Playback, Code Panel, and Linking
 **Goal**: User can step through waypoints, view syntax-highlighted RAPID code, and click in either the 3D view or code panel to navigate bidirectionally -- completing the core verification workflow
@@ -67,19 +84,59 @@ Plans:
 **Plans**: 5 plans
 
 Plans:
-- [x] 03-01-PLAN.md — PlaybackState model + parser PROC range extraction
-- [x] 03-02-PLAN.md — RapidHighlighter syntax highlighter + CodePanel widget
-- [x] 03-03-PLAN.md — PlaybackToolbar + GL widget highlight/picking/triads
-- [x] 03-04-PLAN.md — MainWindow integration (QSplitter, signal wiring, PROC selector, linking)
-- [x] 03-05-PLAN.md — Visual verification checkpoint
+- [x] 03-01-PLAN.md -- PlaybackState model + parser PROC range extraction
+- [x] 03-02-PLAN.md -- RapidHighlighter syntax highlighter + CodePanel widget
+- [x] 03-03-PLAN.md -- PlaybackToolbar + GL widget highlight/picking/triads
+- [x] 03-04-PLAN.md -- MainWindow integration (QSplitter, signal wiring, PROC selector, linking)
+- [x] 03-05-PLAN.md -- Visual verification checkpoint
+
+</details>
+
+### Phase 4: Edit Infrastructure, Selection, and Inspection
+**Goal**: User can select single or multiple waypoints in the 3D viewer (with Shift/Ctrl modifiers) and see their properties displayed in a read-only inspection panel, backed by a mutable edit model with undo/redo wired from day one
+**Depends on**: Phase 3
+**Requirements**: EDIT-01, EDIT-02, SEL-01, SEL-02, INSP-01
+**Success Criteria** (what must be TRUE):
+  1. User can click a waypoint in the 3D viewer to select it, and the selection is visually distinct from unselected points with corresponding RAPID code line highlighted
+  2. User can Shift+click or Ctrl+click to select multiple waypoints, with all selected points visually distinguished in the 3D view
+  3. Selected waypoint's properties (X/Y/Z coordinates, speed, zone value, laser on/off state) are displayed in a property panel alongside the 3D viewer
+  4. Undo (Ctrl+Z) and Redo (Ctrl+Y) actions are available in the Edit menu (disabled until edits are made in Phase 5)
+  5. Title bar shows dirty-state indicator (asterisk) when the edit model has uncommitted changes
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 5: Modification Operations
+**Goal**: User can modify selected waypoints -- adjust coordinates via offset input, change speed/zone/laser properties, delete waypoints with topology options, and insert new points by offset -- with all operations undoable
+**Depends on**: Phase 4
+**Requirements**: MOD-01, MOD-02, MOD-03, MOD-04
+**Success Criteria** (what must be TRUE):
+  1. User can enter X/Y/Z offset values to move a selected waypoint, and the 3D view updates immediately to show the new position
+  2. User can change speed, zone value, and laser on/off state of a selected waypoint via the property panel
+  3. User can delete a waypoint and choose whether to reconnect the path (maintain continuity) or break it (insert laser-off gap), with the 3D view updating accordingly
+  4. User can continuously add new waypoints by specifying offset from the last point, with properties copied from the source point
+  5. Every modification can be undone with Ctrl+Z and redone with Ctrl+Y, restoring both the data and the 3D view
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 6: Export
+**Goal**: User can save the modified toolpath as a new .mod file that preserves the original file's formatting, comments, and non-move RAPID code
+**Depends on**: Phase 5
+**Requirements**: EXP-01
+**Success Criteria** (what must be TRUE):
+  1. User can use File > Save As (Ctrl+Shift+S) to export the modified .mod file to a new location (never overwrites the original)
+  2. The exported .mod file preserves all original comments, IF/WHILE logic, custom PROC structure, and formatting -- only edited values differ from the original
+  3. The exported .mod file can be reloaded in the viewer and shows the modifications correctly
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Parser and File Loading | 3/3 | Complete   | 2026-03-30 |
-| 2. 3D Viewer and Camera | 4/4 | Complete | 2026-03-30 |
-| 3. Playback, Code Panel, and Linking | 5/5 | Complete | 2026-03-30 |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Parser and File Loading | v1.0 | 3/3 | Complete | 2026-03-30 |
+| 2. 3D Viewer and Camera | v1.0 | 4/4 | Complete | 2026-03-30 |
+| 3. Playback, Code Panel, and Linking | v1.0 | 5/5 | Complete | 2026-03-30 |
+| 4. Edit Infrastructure, Selection, and Inspection | v1.1 | 0/0 | Not started | - |
+| 5. Modification Operations | v1.1 | 0/0 | Not started | - |
+| 6. Export | v1.1 | 0/0 | Not started | - |

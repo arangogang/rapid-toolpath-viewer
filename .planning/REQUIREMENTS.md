@@ -155,24 +155,23 @@ Requirements for milestone v1.1: Toolpath Editing. Each maps to roadmap phases.
 | CODE-03 | Phase 3 | Complete |
 | LINK-01 | Phase 3 | Complete |
 | LINK-02 | Phase 3 | Complete |
-
-| EDIT-01 | — | Pending |
-| EDIT-02 | — | Pending |
-| SEL-01 | — | Pending |
-| SEL-02 | — | Pending |
-| INSP-01 | — | Pending |
-| MOD-01 | — | Pending |
-| MOD-02 | — | Pending |
-| MOD-03 | — | Pending |
-| MOD-04 | — | Pending |
-| EXP-01 | — | Pending |
+| EDIT-01 | Phase 4 | Pending |
+| EDIT-02 | Phase 4 | Pending |
+| SEL-01 | Phase 4 | Pending |
+| SEL-02 | Phase 4 | Pending |
+| INSP-01 | Phase 4 | Pending |
+| MOD-01 | Phase 5 | Pending |
+| MOD-02 | Phase 5 | Pending |
+| MOD-03 | Phase 5 | Pending |
+| MOD-04 | Phase 5 | Pending |
+| EXP-01 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 30 total (all complete)
 - v1.1 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10 ⚠️
+- Mapped to phases: 10/10
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-04-01 after milestone v1.1 requirements definition*
+*Last updated: 2026-04-01 after roadmap creation for v1.1*
