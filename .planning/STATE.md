@@ -1,34 +1,34 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: verifying
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-03-30T10:55:03.586Z"
-last_activity: 2026-03-30
+milestone: v1.1
+milestone_name: Toolpath Editing
+status: planning
+stopped_at: null
+last_updated: "2026-04-01"
+last_activity: 2026-04-01
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 12
-  completed_plans: 12
-  percent: 88
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-30)
+See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** .mod 파일을 열면 즉시 3D 툴패스가 렌더링되고, 각 워크포인트를 클릭하면 해당 RAPID 코드 줄로 이동할 수 있어야 한다.
-**Current focus:** Phase 03 — playback-code-panel-and-linking
+**Current focus:** Milestone v1.1 — Toolpath Editing (defining requirements)
 
 ## Current Position
 
-Phase: 03
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-03-30
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-01 — Milestone v1.1 started
 
 Progress: [########=-] 88%
 
