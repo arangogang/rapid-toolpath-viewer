@@ -102,8 +102,12 @@ Plans:
   3. Selected waypoint's properties (X/Y/Z coordinates, speed, zone value, laser on/off state) are displayed in a property panel alongside the 3D viewer
   4. Undo (Ctrl+Z) and Redo (Ctrl+Y) actions are available in the Edit menu (disabled until edits are made in Phase 5)
   5. Title bar shows dirty-state indicator (asterisk) when the edit model has uncommitted changes
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 3 plans
+
+Plans:
+- [ ] 04-01-PLAN.md -- SelectionState + EditModel/EditPoint data models with TDD tests
+- [ ] 04-02-PLAN.md -- PropertyPanel read-only inspection widget with tests
+- [ ] 04-03-PLAN.md -- GL widget multi-select rendering + MainWindow integration + visual verification
 
 ### Phase 5: Modification Operations
 **Goal**: User can modify selected waypoints -- adjust coordinates via offset input, change speed/zone/laser properties, delete waypoints with topology options, and insert new points by offset -- with all operations undoable
@@ -137,6 +141,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Parser and File Loading | v1.0 | 3/3 | Complete | 2026-03-30 |
 | 2. 3D Viewer and Camera | v1.0 | 4/4 | Complete | 2026-03-30 |
 | 3. Playback, Code Panel, and Linking | v1.0 | 5/5 | Complete | 2026-03-30 |
-| 4. Edit Infrastructure, Selection, and Inspection | v1.1 | 0/0 | Not started | - |
+| 4. Edit Infrastructure, Selection, and Inspection | v1.1 | 0/3 | In progress | - |
 | 5. Modification Operations | v1.1 | 0/0 | Not started | - |
 | 6. Export | v1.1 | 0/0 | Not started | - |
