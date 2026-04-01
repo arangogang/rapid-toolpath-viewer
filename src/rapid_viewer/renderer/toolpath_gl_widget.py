@@ -92,7 +92,7 @@ class ToolpathGLWidget(QOpenGLWidget):
     - XYZ axes indicator: bottom-left corner, rotation-only
     """
 
-    waypoint_clicked = pyqtSignal(int)  # emitted when ray-cast picks a waypoint
+    waypoint_picked = pyqtSignal(int, bool, bool)  # index, shift_held, ctrl_held
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -127,6 +127,13 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._highlight_vao: int = 0
         self._highlight_vbo: int = 0
         self._highlight_index: int = -1
+
+        # Selected markers (multi-select)
+        self._selected_vao: int = 0
+        self._selected_vbo: int = 0
+        self._selected_count: int = 0
+        self._selected_set: frozenset[int] = frozenset()
+        self._last_picked_index: int = -1
 
         # TCP orientation triads
         self._triad_vao: int = 0
@@ -192,6 +199,12 @@ class ToolpathGLWidget(QOpenGLWidget):
             np.empty((0, 6), dtype=np.float32)
         )
 
+        # Selected markers VAO/VBO (multi-select)
+        self._selected_vao, self._selected_vbo = self._create_vao_vbo(
+            np.empty((0, 6), dtype=np.float32)
+        )
+        self._selected_count = 0
+
         # Reset counts — VAOs are fresh and empty after (re)initialization
         self._solid_count = 0
         self._dashed_count = 0
@@ -220,6 +233,7 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._draw_solid(mvp)
         self._draw_dashed(mvp, w, h)
         self._draw_markers(mvp)
+        self._draw_selected(mvp)
         self._draw_highlight(mvp)
         self._draw_triads(mvp)
         self._draw_axes_indicator()
@@ -273,6 +287,10 @@ class ToolpathGLWidget(QOpenGLWidget):
         else:
             self._waypoint_positions = None
 
+        # Reset selection state on new scene
+        self._selected_count = 0
+        self._selected_set = frozenset()
+
         # Start at first waypoint for progressive drawing
         self._highlight_index = 0
 
@@ -291,11 +309,42 @@ class ToolpathGLWidget(QOpenGLWidget):
 
         self._highlight_index = index
         pos = self._waypoint_positions[index]
-        # White highlight color
-        vertex = np.array([[pos[0], pos[1], pos[2], 1.0, 1.0, 1.0]], dtype=np.float32)
+        # Magenta when current is also selected, white otherwise
+        if index in self._selected_set:
+            color = [1.0, 0.3, 1.0]  # magenta: current + selected
+        else:
+            color = [1.0, 1.0, 1.0]  # white: current only
+        vertex = np.array([[pos[0], pos[1], pos[2], *color]], dtype=np.float32)
 
         self.makeCurrent()
         self._upload_vbo(self._highlight_vbo, vertex)
+        self.doneCurrent()
+        self.update()
+
+    def set_selected_indices(self, indices: frozenset[int]) -> None:
+        """Update selection highlight VBO with cyan-colored markers."""
+        if self._waypoint_positions is None or not indices:
+            self._selected_count = 0
+            self._selected_set = frozenset()
+            self.update()
+            return
+        ctx = self.context()
+        if ctx is None or not ctx.isValid():
+            return
+        valid = [i for i in indices if 0 <= i < len(self._waypoint_positions)]
+        if not valid:
+            self._selected_count = 0
+            self._selected_set = frozenset()
+            self.update()
+            return
+        verts = np.zeros((len(valid), 6), dtype=np.float32)
+        for j, idx in enumerate(valid):
+            verts[j, :3] = self._waypoint_positions[idx]
+            verts[j, 3:] = [0.0, 1.0, 1.0]  # cyan per UI-SPEC
+        self.makeCurrent()
+        self._upload_vbo(self._selected_vbo, verts)
+        self._selected_count = len(valid)
+        self._selected_set = frozenset(valid)
         self.doneCurrent()
         self.update()
 
@@ -368,6 +417,22 @@ class ToolpathGLWidget(QOpenGLWidget):
         )
         glBindVertexArray(self._marker_vao)
         glDrawArrays(GL_POINTS, 0, count)
+        glBindVertexArray(0)
+
+    def _draw_selected(self, mvp: np.ndarray) -> None:
+        """Draw cyan markers for multi-selected waypoints."""
+        if self._selected_count == 0:
+            return
+        glUseProgram(self._marker_prog)
+        glUniformMatrix4fv(
+            glGetUniformLocation(self._marker_prog, "u_mvp"),
+            1, GL_FALSE, mvp.flatten(),
+        )
+        glUniform1f(
+            glGetUniformLocation(self._marker_prog, "u_point_size"), 10.0,
+        )
+        glBindVertexArray(self._selected_vao)
+        glDrawArrays(GL_POINTS, 0, self._selected_count)
         glBindVertexArray(0)
 
     def _draw_highlight(self, mvp: np.ndarray) -> None:
@@ -467,7 +532,15 @@ class ToolpathGLWidget(QOpenGLWidget):
                     self._camera.set_view(*snap)
                     self.update()
                 else:
+                    self._last_picked_index = -1
                     self._try_pick(pos.x(), pos.y())
+                    if self._last_picked_index >= 0:
+                        mods = event.modifiers()
+                        shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
+                        ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
+                        self.waypoint_picked.emit(
+                            self._last_picked_index, shift, ctrl,
+                        )
         self._mouse_mode = None
         self._press_pos = None
 
@@ -521,7 +594,7 @@ class ToolpathGLWidget(QOpenGLWidget):
         threshold_sq = 20.0 * 20.0  # 20px threshold
 
         if dist_sq[min_idx] <= threshold_sq:
-            self.waypoint_clicked.emit(min_idx)
+            self._last_picked_index = min_idx
 
     # ------------------------------------------------------------------
     # Internal helpers
