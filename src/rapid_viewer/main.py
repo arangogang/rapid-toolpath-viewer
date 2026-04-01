@@ -10,13 +10,22 @@ automatically after the window is shown.
 
 import sys
 
+from PyQt6.QtGui import QSurfaceFormat
 from PyQt6.QtWidgets import QApplication
 
 from rapid_viewer.ui.main_window import MainWindow
 
 
 def main() -> None:
-    """Create the QApplication, show the main window, and start the event loop."""
+    """Create the QApplication with OpenGL 3.3 Core Profile, show window, start event loop."""
+    # Must set surface format before QApplication is created.
+    # Forces OpenGL 3.3 Core Profile globally -- no compatibility context.
+    fmt = QSurfaceFormat()
+    fmt.setVersion(3, 3)
+    fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
+    fmt.setDepthBufferSize(24)
+    QSurfaceFormat.setDefaultFormat(fmt)
+
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()

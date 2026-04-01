@@ -51,11 +51,13 @@ from OpenGL.GL.shaders import (
     compileShader,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QPainter
 from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 
 from rapid_viewer.parser.tokens import ParseResult
 from rapid_viewer.renderer.camera import ArcballCamera
 from rapid_viewer.renderer.geometry_builder import GeometryBuffers, build_geometry
+from rapid_viewer.renderer.view_cube import ViewCube
 from rapid_viewer.renderer.shaders import (
     AXES_FRAG,
     AXES_VERT,
@@ -131,18 +133,33 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._triad_vbo: int = 0
         self._triad_count: int = 0
 
+        # Progressive draw: cumulative vertex counts per waypoint
+        self._solid_cumulative: list[int] = []
+        self._dashed_cumulative: list[int] = []
+
         # Cached waypoint positions for ray-cast picking
         self._waypoint_positions: np.ndarray | None = None
 
         # Mouse press position for click-vs-drag detection
         self._press_pos: tuple[float, float] | None = None
 
+        # Navigation view cube
+        self._view_cube = ViewCube()
+
+        # Last loaded scene — used to re-upload geometry after context loss
+        self._last_parse_result: ParseResult | None = None
+
     # ------------------------------------------------------------------
     # QOpenGLWidget lifecycle
     # ------------------------------------------------------------------
 
     def initializeGL(self) -> None:
-        """Called once when context is created. Compile shaders, create VAOs."""
+        """Called once when context is created (and again after context loss).
+
+        Compiles shaders and creates VAOs/VBOs. If a scene was previously
+        loaded (``_last_parse_result`` is set), re-uploads the geometry so
+        that context loss does not cause a permanently blank viewport.
+        """
         glEnable(GL_DEPTH_TEST)
         glEnable(GL_PROGRAM_POINT_SIZE)
         glClearColor(0.1, 0.1, 0.15, 1.0)
@@ -175,13 +192,27 @@ class ToolpathGLWidget(QOpenGLWidget):
             np.empty((0, 6), dtype=np.float32)
         )
 
+        # Reset counts — VAOs are fresh and empty after (re)initialization
+        self._solid_count = 0
+        self._dashed_count = 0
+        self._marker_count = 0
+        self._triad_count = 0
+        self._highlight_index = -1
+        self._solid_cumulative = []
+        self._dashed_cumulative = []
+        self._waypoint_positions = None
+
+        # Context loss recovery: re-upload geometry if a scene was loaded before
+        if self._last_parse_result is not None:
+            self._upload_scene(self._last_parse_result)
+
     def resizeGL(self, w: int, h: int) -> None:
         """Called on resize. Update viewport and camera aspect."""
         glViewport(0, 0, w, h)
         self._camera.set_aspect(w / max(h, 1))
 
     def paintGL(self) -> None:
-        """Called each frame. Draw toolpath, markers, axes indicator."""
+        """Called each frame. Draw toolpath, markers, axes indicator, view cube."""
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         mvp = self._camera.mvp()
         w, h = self.width(), self.height()
@@ -193,13 +224,33 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._draw_triads(mvp)
         self._draw_axes_indicator()
 
+        # View cube overlay (QPainter on top of GL)
+        painter = QPainter(self)
+        self._view_cube.draw(painter, self._camera.view_rotation(), w, h)
+        painter.end()
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def update_scene(self, parse_result: ParseResult) -> None:
-        """Rebuild GPU geometry from parse result. Call after file load."""
+        """Rebuild GPU geometry from parse result. Call after file load.
+
+        Caches the ParseResult so that geometry can be restored after an
+        OpenGL context loss and re-initialization.
+        """
+        self._last_parse_result = parse_result
+        ctx = self.context()
+        if ctx is None or not ctx.isValid():
+            # Context not yet available — geometry will be uploaded in initializeGL
+            return
         self.makeCurrent()
+        self._upload_scene(parse_result)
+        self.doneCurrent()
+        self.update()
+
+    def _upload_scene(self, parse_result: ParseResult) -> None:
+        """Upload geometry to GPU. Caller must ensure context is current."""
         buffers = build_geometry(parse_result)
         self._upload_vbo(self._solid_vbo, buffers.solid_verts)
         self._solid_count = len(buffers.solid_verts)
@@ -212,14 +263,18 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._upload_vbo(self._triad_vbo, buffers.triad_verts)
         self._triad_count = len(buffers.triad_verts)
 
+        # Store cumulative arrays for progressive drawing
+        self._solid_cumulative = buffers.solid_cumulative or []
+        self._dashed_cumulative = buffers.dashed_cumulative or []
+
         # Cache waypoint positions for ray-cast picking
         if self._marker_count > 0:
             self._waypoint_positions = buffers.marker_verts[:, :3].copy()
         else:
             self._waypoint_positions = None
 
-        # Reset highlight
-        self._highlight_index = -1
+        # Start at first waypoint for progressive drawing
+        self._highlight_index = 0
 
         # Auto-fit camera to scene bounding sphere
         all_pts = buffers.marker_verts[:, :3] if self._marker_count > 0 else None
@@ -227,9 +282,6 @@ class ToolpathGLWidget(QOpenGLWidget):
             center = all_pts.mean(axis=0)
             radius = float(np.max(np.linalg.norm(all_pts - center, axis=1)))
             self._camera.reset(center, max(radius, 1.0))
-
-        self.doneCurrent()
-        self.update()
 
     def set_highlight_index(self, index: int) -> None:
         """Highlight a waypoint by index. Pass -1 to clear highlight."""
@@ -254,15 +306,29 @@ class ToolpathGLWidget(QOpenGLWidget):
     def _draw_solid(self, mvp: np.ndarray) -> None:
         if self._solid_count == 0:
             return
+        # Progressive: only draw up to current waypoint
+        count = self._solid_count
+        if self._highlight_index >= 0 and self._solid_cumulative:
+            idx = min(self._highlight_index, len(self._solid_cumulative) - 1)
+            count = self._solid_cumulative[idx]
+        if count == 0:
+            return
         glUseProgram(self._solid_prog)
         loc = glGetUniformLocation(self._solid_prog, "u_mvp")
         glUniformMatrix4fv(loc, 1, GL_FALSE, mvp.flatten())
         glBindVertexArray(self._solid_vao)
-        glDrawArrays(GL_LINES, 0, self._solid_count)
+        glDrawArrays(GL_LINES, 0, count)
         glBindVertexArray(0)
 
     def _draw_dashed(self, mvp: np.ndarray, w: int, h: int) -> None:
         if self._dashed_count == 0:
+            return
+        # Progressive: only draw up to current waypoint
+        count = self._dashed_count
+        if self._highlight_index >= 0 and self._dashed_cumulative:
+            idx = min(self._highlight_index, len(self._dashed_cumulative) - 1)
+            count = self._dashed_cumulative[idx]
+        if count == 0:
             return
         glUseProgram(self._dashed_prog)
         glUniformMatrix4fv(
@@ -280,11 +346,17 @@ class ToolpathGLWidget(QOpenGLWidget):
             glGetUniformLocation(self._dashed_prog, "u_gap_size"), 6.0,
         )
         glBindVertexArray(self._dashed_vao)
-        glDrawArrays(GL_LINES, 0, self._dashed_count)
+        glDrawArrays(GL_LINES, 0, count)
         glBindVertexArray(0)
 
     def _draw_markers(self, mvp: np.ndarray) -> None:
         if self._marker_count == 0:
+            return
+        # Progressive: only draw markers up to current waypoint
+        count = self._marker_count
+        if self._highlight_index >= 0:
+            count = min(self._highlight_index + 1, self._marker_count)
+        if count == 0:
             return
         glUseProgram(self._marker_prog)
         glUniformMatrix4fv(
@@ -295,7 +367,7 @@ class ToolpathGLWidget(QOpenGLWidget):
             glGetUniformLocation(self._marker_prog, "u_point_size"), 8.0,
         )
         glBindVertexArray(self._marker_vao)
-        glDrawArrays(GL_POINTS, 0, self._marker_count)
+        glDrawArrays(GL_POINTS, 0, count)
         glBindVertexArray(0)
 
     def _draw_highlight(self, mvp: np.ndarray) -> None:
@@ -315,14 +387,18 @@ class ToolpathGLWidget(QOpenGLWidget):
         glBindVertexArray(0)
 
     def _draw_triads(self, mvp: np.ndarray) -> None:
-        """Draw TCP orientation triads (RGB axis lines at each waypoint)."""
-        if self._triad_count == 0:
+        """Draw TCP orientation triad only for the currently selected waypoint."""
+        if self._triad_count == 0 or self._highlight_index < 0:
+            return
+        # Each waypoint has 6 vertices (3 axes × 2 endpoints)
+        start = self._highlight_index * 6
+        if start + 6 > self._triad_count:
             return
         glUseProgram(self._triad_prog)
         loc = glGetUniformLocation(self._triad_prog, "u_mvp")
         glUniformMatrix4fv(loc, 1, GL_FALSE, mvp.flatten())
         glBindVertexArray(self._triad_vao)
-        glDrawArrays(GL_LINES, 0, self._triad_count)
+        glDrawArrays(GL_LINES, start, 6)
         glBindVertexArray(0)
 
     def _draw_axes_indicator(self) -> None:
@@ -330,28 +406,28 @@ class ToolpathGLWidget(QOpenGLWidget):
         w, h = self.width(), self.height()
         size, padding = 80, 10
         glViewport(padding, padding, size, size)
+        try:
+            # Use the view matrix's 3x3 rotation (same source of truth as
+            # the view cube) embedded in a 4x4 for the shader.
+            rot_3x3 = self._camera.view_rotation()
+            rot_only = np.eye(4, dtype=np.float32)
+            rot_only[:3, :3] = rot_3x3
 
-        # Use module-level function (pyrr.Matrix44 class method does not
-        # exist in pyrr 0.10.3).
-        rot_only = np.asarray(
-            pyrr.matrix44.create_from_quaternion(self._camera.rotation),
-            dtype=np.float32,
-        )
-        ortho = pyrr.matrix44.create_orthogonal_projection(
-            -1.5, 1.5, -1.5, 1.5, -10.0, 10.0, dtype=np.float32,
-        )
-        axes_mvp = (ortho @ rot_only).astype(np.float32)
+            ortho = pyrr.matrix44.create_orthogonal_projection(
+                -1.5, 1.5, -1.5, 1.5, -10.0, 10.0, dtype=np.float32,
+            )
+            axes_mvp = (rot_only @ ortho).astype(np.float32)
 
-        glUseProgram(self._axes_prog)
-        glUniformMatrix4fv(
-            glGetUniformLocation(self._axes_prog, "u_mvp"),
-            1, GL_FALSE, axes_mvp.flatten(),
-        )
-        glBindVertexArray(self._axes_vao)
-        glDrawArrays(GL_LINES, 0, 6)
-        glBindVertexArray(0)
-
-        glViewport(0, 0, w, h)  # restore full viewport
+            glUseProgram(self._axes_prog)
+            glUniformMatrix4fv(
+                glGetUniformLocation(self._axes_prog, "u_mvp"),
+                1, GL_FALSE, axes_mvp.flatten(),
+            )
+            glBindVertexArray(self._axes_vao)
+            glDrawArrays(GL_LINES, 0, 6)
+            glBindVertexArray(0)
+        finally:
+            glViewport(0, 0, w, h)  # always restore full viewport
 
     # ------------------------------------------------------------------
     # Mouse events (CAM-01, CAM-02, CAM-03)
@@ -380,8 +456,18 @@ class ToolpathGLWidget(QOpenGLWidget):
             pos = event.position()
             dx = pos.x() - self._press_pos[0]
             dy = pos.y() - self._press_pos[1]
-            if dx * dx + dy * dy < 9.0:  # 3px threshold
-                self._try_pick(pos.x(), pos.y())
+            if dx * dx + dy * dy < 9.0:  # 3px threshold — click, not drag
+                # Check view cube first
+                snap = self._view_cube.hit_test(
+                    pos.x(), pos.y(),
+                    self._camera.view_rotation(),
+                    self.width(), self.height(),
+                )
+                if snap is not None:
+                    self._camera.set_view(*snap)
+                    self.update()
+                else:
+                    self._try_pick(pos.x(), pos.y())
         self._mouse_mode = None
         self._press_pos = None
 

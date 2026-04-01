@@ -101,6 +101,7 @@ class MoveInstruction:
     wobj: str                         # e.g. "wobj0" (default "wobj0" if omitted)
     source_line: int                  # 1-indexed line of Move keyword
     has_cartesian: bool = True        # False for MoveAbsJ
+    laser_on: bool = False            # True if digital output (laser) is active
 
 
 @dataclass

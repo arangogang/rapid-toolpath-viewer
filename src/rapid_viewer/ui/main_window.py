@@ -132,9 +132,18 @@ class MainWindow(QMainWindow):
         self._apply_proc_filter(proc_name)
 
     def _apply_proc_filter(self, proc_name: str) -> None:
-        """Filter moves by PROC name and update PlaybackState + GL widget."""
+        """Filter moves by PROC name and update PlaybackState + GL widget.
+
+        Preserves the current playback position by matching source_line
+        after the filter is applied.
+        """
         if self._parse_result is None:
             return
+
+        # Remember current position
+        cur_move = self._playback_state.current_move
+        cur_source_line = cur_move.source_line if cur_move is not None else -1
+        cur_index = self._playback_state.current_index
 
         all_moves = self._parse_result.moves
 
@@ -154,9 +163,17 @@ class MainWindow(QMainWindow):
         self._playback_state.set_moves(filtered_moves)
 
         # Create a filtered ParseResult copy and update GL scene
-        if self._gl_ready():
-            filtered_result = replace(self._parse_result, moves=filtered_moves)
-            self._gl_widget.update_scene(filtered_result)
+        filtered_result = replace(self._parse_result, moves=filtered_moves)
+        self._gl_widget.update_scene(filtered_result)
+
+        # Restore position: find matching source_line, or clamp to last index
+        if filtered_moves and cur_source_line >= 0:
+            restore_idx = len(filtered_moves) - 1  # default: last
+            for i, m in enumerate(filtered_moves):
+                if m.source_line >= cur_source_line:
+                    restore_idx = i
+                    break
+            self._playback_state.set_index(restore_idx)
 
     # -- File loading --------------------------------------------------------
 
@@ -204,9 +221,8 @@ class MainWindow(QMainWindow):
             # Set moves in PlaybackState
             self._playback_state.set_moves(self._parse_result.moves)
 
-            # Update GL scene (skip if context not yet initialized)
-            if self._gl_ready():
-                self._gl_widget.update_scene(self._parse_result)
+            # Update GL scene (update_scene handles context-not-ready internally)
+            self._gl_widget.update_scene(self._parse_result)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "Error", f"Failed to load file:\n{e}")
 

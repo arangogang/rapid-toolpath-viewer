@@ -26,9 +26,13 @@ from rapid_viewer.parser.patterns import (
     RE_MOVEABSJ,
     RE_MOVEJ,
     RE_MOVEL,
+    RE_NUM_DECL,
     RE_OFFS,
+    RE_OFFS_FLEX,
     RE_PROC,
+    RE_ROBTARGET_ASSIGN,
     RE_ROBTARGET_DECL,
+    RE_SETDO,
     RE_WOBJ,
 )
 from rapid_viewer.parser.tokens import (
@@ -265,10 +269,57 @@ def try_parse_jointtarget_decl(stmt: str, line_num: int) -> JointTarget | None:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_num_arg(
+    arg: str,
+    num_constants: dict[str, float],
+) -> float:
+    """Resolve a numeric argument that may be a literal or a CONST num variable.
+
+    Returns 0.0 for unresolvable references (e.g. PROC parameters like zLayer).
+    """
+    arg = arg.strip()
+    try:
+        return float(arg)
+    except ValueError:
+        return num_constants.get(arg, 0.0)
+
+
+def resolve_offs_flex(
+    ref_str: str,
+    targets: dict[str, RobTarget],
+    num_constants: dict[str, float],
+    line_num: int,
+) -> RobTarget | None:
+    """Resolve Offs() where arguments may be variable names, not just literals.
+
+    Falls back to _resolve_num_arg which substitutes 0.0 for unknown variables.
+    """
+    m = RE_OFFS_FLEX.search(ref_str)
+    if m is None:
+        return None
+    base_name = m.group(1)
+    dx = _resolve_num_arg(m.group(2), num_constants)
+    dy = _resolve_num_arg(m.group(3), num_constants)
+    dz = _resolve_num_arg(m.group(4), num_constants)
+    base = targets.get(base_name)
+    if base is None:
+        return None
+    new_pos = base.pos + np.array([dx, dy, dz], dtype=np.float64)
+    return RobTarget(
+        name=f"Offs({base_name},{dx},{dy},{dz})",
+        pos=new_pos,
+        orient=base.orient,
+        confdata=base.confdata,
+        extjoint=base.extjoint,
+        source_line=line_num,
+    )
+
+
 def resolve_target_ref(
     ref_str: str,
     targets: dict[str, RobTarget],
     line_num: int,
+    num_constants: dict[str, float] | None = None,
 ) -> RobTarget | None:
     """Resolve a target reference string to a RobTarget.
 
@@ -287,7 +338,7 @@ def resolve_target_ref(
     """
     ref_str = ref_str.strip()
 
-    # Case 1: Offs() function
+    # Case 1: Offs() function — try strict literal match first
     offs_m = RE_OFFS.search(ref_str)
     if offs_m is not None:
         base_name = offs_m.group(1)
@@ -306,6 +357,12 @@ def resolve_target_ref(
             extjoint=base.extjoint,
             source_line=line_num,
         )
+
+    # Case 1b: Offs() with variable arguments (e.g. CONST num names)
+    if num_constants and "Offs" in ref_str:
+        result = resolve_offs_flex(ref_str, targets, num_constants, line_num)
+        if result is not None:
+            return result
 
     # Case 2: Inline robtarget
     if ref_str.startswith("["):
@@ -336,6 +393,7 @@ def try_parse_move(
     line_num: int,
     targets: dict[str, RobTarget],
     joint_targets: dict[str, JointTarget],
+    num_constants: dict[str, float] | None = None,
 ) -> MoveInstruction | None:
     """Attempt to parse a move instruction statement.
 
@@ -348,6 +406,7 @@ def try_parse_move(
         line_num: 1-indexed line number where this statement starts.
         targets: RobTarget lookup dict from Pass 1.
         joint_targets: JointTarget lookup dict from Pass 1.
+        num_constants: CONST/PERS num variable lookup dict from Pass 1.
 
     Returns:
         MoveInstruction if a move pattern matched, else None.
@@ -359,7 +418,7 @@ def try_parse_move(
     # --- MoveL ---
     m = RE_MOVEL.search(stmt)
     if m is not None:
-        target = resolve_target_ref(m.group(1), targets, line_num)
+        target = resolve_target_ref(m.group(1), targets, line_num, num_constants)
         return MoveInstruction(
             move_type=MoveType.MOVEL,
             target=target,
@@ -376,7 +435,7 @@ def try_parse_move(
     # --- MoveJ ---
     m = RE_MOVEJ.search(stmt)
     if m is not None:
-        target = resolve_target_ref(m.group(1), targets, line_num)
+        target = resolve_target_ref(m.group(1), targets, line_num, num_constants)
         return MoveInstruction(
             move_type=MoveType.MOVEJ,
             target=target,
@@ -393,8 +452,8 @@ def try_parse_move(
     # --- MoveC ---
     m = RE_MOVEC.search(stmt)
     if m is not None:
-        cir_target = resolve_target_ref(m.group(1), targets, line_num)
-        to_target = resolve_target_ref(m.group(2), targets, line_num)
+        cir_target = resolve_target_ref(m.group(1), targets, line_num, num_constants)
+        to_target = resolve_target_ref(m.group(2), targets, line_num, num_constants)
         return MoveInstruction(
             move_type=MoveType.MOVEC,
             target=to_target,
@@ -472,9 +531,10 @@ def parse_module(source: str) -> ParseResult:
             name, start = proc_stack.pop()
             proc_ranges[name] = (start, line_num)
 
-    # Pass 1: Build target lookup tables
+    # Pass 1: Build target lookup tables and CONST num variables
     targets: dict[str, RobTarget] = {}
     joint_targets: dict[str, JointTarget] = {}
+    num_constants: dict[str, float] = {}
     for stmt_text, line_num in statements:
         rt = try_parse_robtarget_decl(stmt_text, line_num)
         if rt is not None:
@@ -483,12 +543,58 @@ def parse_module(source: str) -> ParseResult:
         jt = try_parse_jointtarget_decl(stmt_text, line_num)
         if jt is not None:
             joint_targets[jt.name] = jt
+            continue
+        # Track CONST/PERS num variables for Offs argument resolution
+        nm = RE_NUM_DECL.search(stmt_text)
+        if nm is not None:
+            try:
+                num_constants[nm.group(1)] = float(nm.group(2))
+            except ValueError:
+                pass
 
-    # Pass 2: Extract move instructions
-    moves: list[MoveInstruction] = []
+    # Pass 1b: Resolve VAR robtarget runtime assignments (e.g. pWorkStart := Offs(...))
     for stmt_text, line_num in statements:
-        move = try_parse_move(stmt_text, line_num, targets, joint_targets)
+        am = RE_ROBTARGET_ASSIGN.search(stmt_text)
+        if am is not None:
+            var_name = am.group(1)
+            rhs = am.group(2)
+            if var_name not in targets:
+                resolved = resolve_offs_flex(rhs, targets, num_constants, line_num)
+                if resolved is not None:
+                    targets[var_name] = RobTarget(
+                        name=var_name,
+                        pos=resolved.pos,
+                        orient=resolved.orient,
+                        confdata=resolved.confdata,
+                        extjoint=resolved.extjoint,
+                        source_line=line_num,
+                    )
+
+    # Pass 2: Extract move instructions (track SetDO for laser state)
+    moves: list[MoveInstruction] = []
+    laser_on = False
+    for stmt_text, line_num in statements:
+        # Track digital output state for laser ON/OFF coloring
+        do_m = RE_SETDO.search(stmt_text)
+        if do_m is not None:
+            laser_on = do_m.group(2) == "1"
+            continue
+        move = try_parse_move(stmt_text, line_num, targets, joint_targets, num_constants)
         if move is not None:
+            if laser_on:
+                move = MoveInstruction(
+                    move_type=move.move_type,
+                    target=move.target,
+                    circle_point=move.circle_point,
+                    joint_target=move.joint_target,
+                    speed=move.speed,
+                    zone=move.zone,
+                    tool=move.tool,
+                    wobj=move.wobj,
+                    source_line=move.source_line,
+                    has_cartesian=move.has_cartesian,
+                    laser_on=True,
+                )
             moves.append(move)
 
     return ParseResult(

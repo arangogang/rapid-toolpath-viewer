@@ -13,11 +13,12 @@ hidden_imports = (
         'PyQt6.QtCore',
         'PyQt6.QtOpenGL',
         'PyQt6.QtOpenGLWidgets',
-        # OpenGL — 향후 PyOpenGL 추가 시 활성화
-        # 'OpenGL',
-        # 'OpenGL.GL',
-        # 'OpenGL.arrays.numpymodule',
-        # 'OpenGL_accelerate',
+        # OpenGL — PyOpenGL uses dynamic imports; PyInstaller needs explicit hints
+        'OpenGL',
+        'OpenGL.GL',
+        'OpenGL.GL.shaders',
+        'OpenGL.arrays.numpymodule',
+        'OpenGL_accelerate',
         'numpy',
     ]
 )
@@ -60,5 +61,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,          # 아이콘 없음 (향후 추가 가능: icon='assets/icon.ico')
+    icon='rapid_viewer.ico',
 )

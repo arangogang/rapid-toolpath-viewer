@@ -5,6 +5,9 @@ requires-python = ">=3.11"
 dependencies = [
     "PyQt6>=6.10",
     "numpy>=1.26",
+    "PyOpenGL>=3.1.10",
+    "PyOpenGL-accelerate>=3.1.10",
+    "pyrr>=0.10.3",
 ]
 
 [project.optional-dependencies]

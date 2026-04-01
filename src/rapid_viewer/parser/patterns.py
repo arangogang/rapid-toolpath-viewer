@@ -128,6 +128,40 @@ RE_ENDMODULE = re.compile(r"ENDMODULE", re.IGNORECASE)
 # Utility patterns
 # ---------------------------------------------------------------------------
 
+# CONST|PERS num name := value
+# Group 1: variable name, Group 2: numeric value
+RE_NUM_DECL = re.compile(
+    r"(?:LOCAL\s+)?"
+    r"(?:CONST|PERS)\s+"
+    r"num\s+"
+    r"(\w+)"                   # group 1: name
+    r"\s*:=\s*"
+    r"(" + _NUM + r")",        # group 2: value
+    re.IGNORECASE,
+)
+
+# VAR robtarget assignment (runtime): name := Offs(base, dx, dy, dz) OR name := expr
+# Group 1: variable name, Group 2: RHS expression
+RE_ROBTARGET_ASSIGN = re.compile(
+    r"^(\w+)\s*:=\s*(Offs\s*\(.+\))",
+    re.IGNORECASE,
+)
+
+# Offs() with potentially non-literal arguments (variable names or numbers)
+# Group 1: base name, Group 2: arg2, Group 3: arg3, Group 4: arg4
+_OFFS_ARG = r"([\w.+\-eE]+)"
+RE_OFFS_FLEX = re.compile(
+    r"Offs\s*\(\s*(\w+)\s*,\s*" + _OFFS_ARG + r"\s*,\s*" + _OFFS_ARG + r"\s*,\s*" + _OFFS_ARG + r"\s*\)",
+    re.IGNORECASE,
+)
+
+# SetDO signal_name, value  (digital output on/off)
+# Group 1: signal name, Group 2: value (0 or 1)
+RE_SETDO = re.compile(
+    r"SetDO\s+(\w+)\s*,\s*(\d+)",
+    re.IGNORECASE,
+)
+
 # Extract innermost bracket groups: [content without nested brackets]
 # Used to pull pos, orient, confdata, extjoint from robtarget bracket data.
 RE_BRACKET_GROUP = re.compile(r"\[([^\[\]]+)\]")

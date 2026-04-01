@@ -15,10 +15,15 @@ import pyrr
 from rapid_viewer.parser.tokens import MoveInstruction, MoveType, ParseResult
 
 # Color palette (RGB float 0.0-1.0)
-COLOR_MOVEL = (0.2, 0.8, 0.2)  # solid green
-COLOR_MOVEJ = (0.8, 0.5, 0.1)  # dashed orange
-COLOR_MOVEC = (0.2, 0.6, 1.0)  # arc blue
-COLOR_MARKER = (1.0, 1.0, 0.3)  # waypoint yellow
+# Laser ON: bright colors (active cutting/welding path)
+COLOR_MOVEL = (0.2, 0.8, 0.2)       # solid green
+COLOR_MOVEC = (0.2, 0.6, 1.0)       # arc blue
+# Laser OFF: dim colors (rapid traverse / repositioning)
+COLOR_MOVEL_OFF = (0.7, 0.3, 0.3)   # dim red
+COLOR_MOVEC_OFF = (0.5, 0.4, 0.6)   # dim purple
+# Always same color regardless of laser state
+COLOR_MOVEJ = (0.8, 0.5, 0.1)       # dashed orange
+COLOR_MARKER = (1.0, 1.0, 0.3)      # waypoint yellow
 
 
 @dataclass
@@ -29,12 +34,18 @@ class GeometryBuffers:
     dashed_verts: MoveJ segments
     marker_verts: one point per Cartesian waypoint
     Each array shape (N, 6) float32: [x, y, z, r, g, b]
+
+    Progressive draw support:
+    solid_cumulative[i]: solid vertex count after waypoint i
+    dashed_cumulative[i]: dashed vertex count after waypoint i
     """
 
     solid_verts: np.ndarray
     dashed_verts: np.ndarray
     marker_verts: np.ndarray
     triad_verts: np.ndarray
+    solid_cumulative: list[int] | None = None
+    dashed_cumulative: list[int] | None = None
 
 
 def build_geometry(result: ParseResult, arc_segments: int = 32) -> GeometryBuffers:
@@ -46,6 +57,8 @@ def build_geometry(result: ParseResult, arc_segments: int = 32) -> GeometryBuffe
     solid: list[float] = []
     dashed: list[float] = []
     markers: list[float] = []
+    solid_cum: list[int] = []
+    dashed_cum: list[int] = []
     prev_pos: np.ndarray | None = None
 
     for move in result.moves:
@@ -56,7 +69,8 @@ def build_geometry(result: ParseResult, arc_segments: int = 32) -> GeometryBuffe
 
         if move.move_type == MoveType.MOVEL:
             if prev_pos is not None:
-                _add_segment(solid, prev_pos, curr_pos, COLOR_MOVEL)
+                color = COLOR_MOVEL if move.laser_on else COLOR_MOVEL_OFF
+                _add_segment(solid, prev_pos, curr_pos, color)
 
         elif move.move_type == MoveType.MOVEJ:
             if prev_pos is not None:
@@ -64,13 +78,18 @@ def build_geometry(result: ParseResult, arc_segments: int = 32) -> GeometryBuffe
 
         elif move.move_type == MoveType.MOVEC:
             if prev_pos is not None and move.circle_point is not None:
+                color = COLOR_MOVEC if move.laser_on else COLOR_MOVEC_OFF
                 arc_pts = tessellate_arc(
                     prev_pos,
                     move.circle_point.pos.astype(np.float64),
                     curr_pos,
                     arc_segments,
                 )
-                _add_polyline(solid, arc_pts, COLOR_MOVEC)
+                _add_polyline(solid, arc_pts, color)
+
+        # Track cumulative vertex counts for progressive drawing
+        solid_cum.append(len(solid) // 6)
+        dashed_cum.append(len(dashed) // 6)
 
         # Marker at every Cartesian waypoint
         markers.extend([*curr_pos, *COLOR_MARKER])
@@ -86,6 +105,8 @@ def build_geometry(result: ParseResult, arc_segments: int = 32) -> GeometryBuffe
         dashed_verts=_to_array(dashed),
         marker_verts=_to_array(markers),
         triad_verts=build_triad_vertices(result.moves),
+        solid_cumulative=solid_cum,
+        dashed_cumulative=dashed_cum,
     )
 
 

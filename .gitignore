@@ -9,3 +9,9 @@ build/
 .pytest_cache/
 .ruff_cache/
 *.egg
+
+# Local files
+.claude/
+*.lnk
+*.jpg
+*.mod

@@ -57,13 +57,13 @@ class TestPlaybackToolbar:
         assert toolbar._pos_label.text() == "0 / 0"
 
     def test_speed_slider_range(self, qtbot):
-        """Slider minimum=5, maximum=100, default=10."""
+        """Slider minimum=5, maximum=1000, default=10."""
         state = PlaybackState()
         toolbar = PlaybackToolbar(state)
         qtbot.addWidget(toolbar)
 
         assert toolbar._speed_slider.minimum() == 5
-        assert toolbar._speed_slider.maximum() == 100
+        assert toolbar._speed_slider.maximum() == 1000
         assert toolbar._speed_slider.value() == 10
 
     def test_speed_to_interval(self, qtbot):
