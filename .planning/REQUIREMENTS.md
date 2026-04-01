@@ -72,7 +72,7 @@ Requirements for milestone v1.1: Toolpath Editing. Each maps to roadmap phases.
 
 ### Inspection
 
-- [ ] **INSP-01**: 선택된 포인트의 속성 패널 표시 — 좌표(X,Y,Z), 속도, zone값, 레이저 on/off 상태
+- [x] **INSP-01**: 선택된 포인트의 속성 패널 표시 — 좌표(X,Y,Z), 속도, zone값, 레이저 on/off 상태
 
 ### Modification
 
@@ -159,7 +159,7 @@ Requirements for milestone v1.1: Toolpath Editing. Each maps to roadmap phases.
 | EDIT-02 | Phase 4 | Complete |
 | SEL-01 | Phase 4 | Complete |
 | SEL-02 | Phase 4 | Complete |
-| INSP-01 | Phase 4 | Pending |
+| INSP-01 | Phase 4 | Complete |
 | MOD-01 | Phase 5 | Pending |
 | MOD-02 | Phase 5 | Pending |
 | MOD-03 | Phase 5 | Pending |

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Toolpath Editing
 status: Executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-04-01T08:03:55.670Z"
-last_activity: 2026-04-01 -- Plan 04-01 complete (EditModel + SelectionState)
+stopped_at: Completed Wave 1 (04-01 + 04-02)
+last_updated: "2026-04-01T08:40:18.504Z"
+last_activity: 2026-04-01 -- Wave 1 complete (EditModel + SelectionState + PropertyPanel)
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 15
+  completed_plans: 13
   percent: 0
 ---
 
@@ -63,6 +63,7 @@ Progress: [###-------] 33%
 - Trend: stable
 
 *Updated after each plan completion*
+| Phase 04 P02 | 87 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,7 @@ Recent decisions affecting current work:
 - [Phase 04 P01]: selection_changed uses pyqtSignal(object) because PyQt6 does not support frozenset as signal type
 - [Phase 04 P01]: EditPoint.from_move for MoveAbsJ (target=None) defaults pos to np.zeros(3)
 - [Phase 04 P01]: extend_to delegates to toggle (Ctrl+click behavior per D-02)
+- [Phase 04 P02]: Duck-typed point parameter in PropertyPanel to avoid circular dependency during parallel development
 
 ### Pending Todos
 
@@ -121,6 +123,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-01T08:39:59Z
-Stopped at: Completed 04-01-PLAN.md
-Resume file: .planning/phases/04-edit-infrastructure-selection-and-inspection/04-02-PLAN.md
+Last session: 2026-04-01T08:40:18.498Z
+Stopped at: Completed Wave 1 (04-01 + 04-02)
+Resume file: .planning/phases/04-edit-infrastructure-selection-and-inspection/04-03-PLAN.md

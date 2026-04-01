@@ -106,7 +106,7 @@ Plans:
 
 Plans:
 - [x] 04-01-PLAN.md -- SelectionState + EditModel/EditPoint data models with TDD tests
-- [ ] 04-02-PLAN.md -- PropertyPanel read-only inspection widget with tests
+- [x] 04-02-PLAN.md -- PropertyPanel read-only inspection widget with tests
 - [ ] 04-03-PLAN.md -- GL widget multi-select rendering + MainWindow integration + visual verification
 
 ### Phase 5: Modification Operations
