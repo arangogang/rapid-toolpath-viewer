@@ -3,10 +3,12 @@
 Provides the QMainWindow with:
   - File > Open menu action (Ctrl+O) to load .mod files via native dialog
   - File > Exit menu action (Ctrl+Q) to close the application
-  - QSplitter layout: GL widget (60%) left, CodePanel (40%) right
+  - Edit > Undo (Ctrl+Z) and Redo (Ctrl+Y) via EditModel's QUndoStack
+  - QSplitter layout: GL widget (left) | code panel + property panel (right)
   - PlaybackToolbar at bottom with PROC selector QComboBox
   - Bidirectional linking: 3D click <-> code panel scroll
   - PlaybackState wiring for step-through navigation
+  - EditModel + SelectionState for Phase 4 edit infrastructure
 """
 
 from __future__ import annotations
@@ -35,25 +37,40 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_TITLE)
         self.setMinimumSize(1024, 700)
         self._parse_result = None
-        self._setup_menu()
 
         # Lazy imports (isolate OpenGL from parser-only tests)
         from rapid_viewer.renderer.toolpath_gl_widget import ToolpathGLWidget
         from rapid_viewer.ui.code_panel import CodePanel
+        from rapid_viewer.ui.edit_model import EditModel
         from rapid_viewer.ui.playback_state import PlaybackState
         from rapid_viewer.ui.playback_toolbar import PlaybackToolbar
+        from rapid_viewer.ui.property_panel import PropertyPanel
+        from rapid_viewer.ui.selection_state import SelectionState
 
         # Core state
         self._playback_state = PlaybackState(self)
+        self._selection_state = SelectionState(self)
+        self._edit_model = EditModel(self)
+
+        # Menus (must be after EditModel for Edit menu)
+        self._setup_menu()
+        self._setup_edit_menu()
 
         # Widgets
         self._gl_widget = ToolpathGLWidget(self)
         self._code_panel = CodePanel(self)
+        self._property_panel = PropertyPanel(self)
 
-        # QSplitter: 3D view (60%) | code panel (40%)
+        # Right pane: vertical splitter with code panel (top) + property panel (bottom)
+        right_splitter = QSplitter(Qt.Orientation.Vertical, self)
+        right_splitter.addWidget(self._code_panel)
+        right_splitter.addWidget(self._property_panel)
+        right_splitter.setSizes([500, 200])
+
+        # Main splitter: GL widget (left) | right_splitter (right)
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.addWidget(self._gl_widget)
-        splitter.addWidget(self._code_panel)
+        splitter.addWidget(right_splitter)
         splitter.setSizes([700, 300])
         self.setCentralWidget(splitter)
 
@@ -88,16 +105,33 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-    def _wire_signals(self) -> None:
-        """Connect signals for bidirectional 3D-to-code linking."""
-        # 3D click -> select waypoint in PlaybackState
-        self._gl_widget.waypoint_clicked.connect(self._playback_state.set_index)
+    def _setup_edit_menu(self) -> None:
+        """Build the Edit menu with Undo/Redo actions from QUndoStack."""
+        menu_bar = self.menuBar()
+        edit_menu = menu_bar.addMenu("&Edit")
+        undo_action = self._edit_model.undo_stack.createUndoAction(self, "&Undo")
+        undo_action.setShortcut("Ctrl+Z")
+        edit_menu.addAction(undo_action)
+        redo_action = self._edit_model.undo_stack.createRedoAction(self, "&Redo")
+        redo_action.setShortcut("Ctrl+Y")
+        edit_menu.addAction(redo_action)
 
-        # Current waypoint changed -> update 3D highlight + code panel
+    def _wire_signals(self) -> None:
+        """Connect signals for bidirectional 3D-to-code linking and Phase 4 models."""
+        # 3D pick -> route through MainWindow for selection logic
+        self._gl_widget.waypoint_picked.connect(self._on_waypoint_picked)
+
+        # Current waypoint changed -> update 3D highlight + code panel + property panel
         self._playback_state.current_changed.connect(self._on_waypoint_changed)
 
         # Code panel click -> find matching move -> select in 3D
         self._code_panel.line_clicked.connect(self._on_code_line_clicked)
+
+        # Selection changed -> update GL multi-select + property panel
+        self._selection_state.selection_changed.connect(self._on_selection_changed)
+
+        # Dirty state -> title bar asterisk
+        self._edit_model.dirty_changed.connect(self._on_dirty_changed)
 
     # -- Slots ---------------------------------------------------------------
 
@@ -110,18 +144,51 @@ class MainWindow(QMainWindow):
         ctx = self._gl_widget.context()
         return ctx is not None and ctx.isValid()
 
+    def _on_waypoint_picked(self, index: int, shift: bool, ctrl: bool) -> None:
+        """Route waypoint pick to selection and playback state per D-02."""
+        if shift or ctrl:
+            self._selection_state.toggle(index)
+        else:
+            self._selection_state.select_single(index)
+        self._playback_state.set_index(index)
+
     def _on_waypoint_changed(self, index: int) -> None:
-        """Update GL highlight and code panel when the current waypoint changes."""
+        """Update GL highlight, code panel, and property panel."""
         if self._gl_ready():
             self._gl_widget.set_highlight_index(index)
         move = self._playback_state.current_move
         if move is not None:
             self._code_panel.highlight_line(move.source_line)
+        self._update_property_panel()
+
+    def _on_selection_changed(self, selected: frozenset) -> None:
+        """Update GL selection rendering and property panel."""
+        if self._gl_ready():
+            self._gl_widget.set_selected_indices(selected)
+        self._update_property_panel()
+
+    def _update_property_panel(self) -> None:
+        """Refresh property panel from current PlaybackState index + SelectionState count."""
+        idx = self._playback_state.current_index
+        point = self._edit_model.point_at(idx) if idx >= 0 else None
+        count = len(self._selection_state.selected_indices)
+        self._property_panel.update_from_point(point, count)
+
+    def _on_dirty_changed(self, dirty: bool) -> None:
+        """Add or remove asterisk prefix from title bar."""
+        title = self.windowTitle()
+        if title.startswith("* "):
+            title = title[2:]
+        if dirty:
+            self.setWindowTitle(f"* {title}")
+        else:
+            self.setWindowTitle(title)
 
     def _on_code_line_clicked(self, line: int) -> None:
         """Find a move matching the clicked source line and select it."""
         for i, move in enumerate(self._playback_state._moves):
             if move.source_line == line:
+                self._selection_state.select_single(i)
                 self._playback_state.set_index(i)
                 return
 
@@ -129,6 +196,7 @@ class MainWindow(QMainWindow):
         """Filter moves by selected PROC and update state + geometry."""
         if self._parse_result is None:
             return
+        self._selection_state.clear()
         self._apply_proc_filter(proc_name)
 
     def _apply_proc_filter(self, proc_name: str) -> None:
@@ -205,7 +273,13 @@ class MainWindow(QMainWindow):
 
             source = read_mod_file(path)
             self._parse_result = parse_module(source)
-            self.setWindowTitle(f"{APP_TITLE} - {path.name}")
+
+            # Clear selection before loading new data (Pitfall 4)
+            self._selection_state.clear()
+            # Initialize EditModel with parsed moves (Pitfall 3)
+            self._edit_model.load(self._parse_result.moves)
+
+            self.setWindowTitle(f"{path.name} - {APP_TITLE}")
 
             # Populate code panel with source text
             self._code_panel.set_source(self._parse_result.source_text)
