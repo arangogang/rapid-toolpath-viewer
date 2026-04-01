@@ -56,6 +56,35 @@
 - [x] **LINK-01**: 3D 뷰어에서 워크포인트를 클릭하면 코드 패널이 해당 줄로 스크롤된다
 - [x] **LINK-02**: 코드 패널에서 Move 명령어 줄을 클릭하면 3D 뷰어에서 해당 포인트가 선택된다
 
+## v1.1 Requirements
+
+Requirements for milestone v1.1: Toolpath Editing. Each maps to roadmap phases.
+
+### Edit Infrastructure
+
+- [ ] **EDIT-01**: Mutable EditModel 레이어 — frozen 파서 토큰 위에 편집 가능한 래퍼, 모든 편집 기능의 기반
+- [ ] **EDIT-02**: QUndoStack 기반 Undo/Redo (Ctrl+Z/Y) — 모든 편집 작업을 QUndoCommand로 래핑
+
+### Selection
+
+- [ ] **SEL-01**: 3D 뷰어에서 워크포인트 클릭으로 단일 선택, 선택 시 RAPID 코드 줄 하이라이트 연동
+- [ ] **SEL-02**: Shift/Ctrl 클릭으로 다중 선택 지원, 선택된 포인트들 시각적 구분
+
+### Inspection
+
+- [ ] **INSP-01**: 선택된 포인트의 속성 패널 표시 — 좌표(X,Y,Z), 속도, zone값, 레이저 on/off 상태
+
+### Modification
+
+- [ ] **MOD-01**: 좌표 오프셋 수정 — X,Y,Z 델타값 입력으로 선택된 워크포인트 이동
+- [ ] **MOD-02**: 속성 수정 — 속도, zone값, 레이저 on/off 변경
+- [ ] **MOD-03**: 웨이포인트 삭제 — 삭제 후 다음 패스 연결(기존 경로 유지) 또는 끊기(레이저 OFF 이동) 옵션
+- [ ] **MOD-04**: 연속 추가 — 오프셋 입력 후 추가 포인트 계속 생성, 기존 속성 복사
+
+### Export
+
+- [ ] **EXP-01**: 수정된 .mod 파일 다른 이름으로 저장 — 원본 포맷/주석 보존 (소스 텍스트 패칭 방식)
+
 ## v2 Requirements
 
 ### Playback Enhancement
@@ -67,6 +96,12 @@
 
 - **ANAL-01**: 경로 통계 패널 (총 길이, 포인트 수, 이동 타입 분류)
 - **ANAL-02**: 코드 패널 텍스트 검색
+
+### Advanced Editing
+
+- **ADV-01**: 드래그로 워크포인트 3D 이동 (직접 조작)
+- **ADV-02**: 다중 선택 일괄 배치 편집 (배치 오프셋, 배치 속성 변경)
+- **ADV-03**: 복사/붙여넣기 워크포인트 시퀀스
 
 ### Extended Parsing
 
@@ -83,6 +118,8 @@
 | 실시간 로봇 연결 (EGM) | 완전히 다른 제품 카테고리 |
 | .pgf 프로젝트 파일 파싱 | 멀티 모듈/시스템 구조 복잡도 |
 | CAD 모델 임포트 (STEP/IGES) | 별도 파싱 라이브러리 필요, v2+ 고려 |
+| RAPID 코드 직접 텍스트 편집 | IDE 기능, 별도 도구 사용 |
+| 원본 파일 덮어쓰기 저장 | 안전성 — Save As만 지원 |
 
 ## Traceability
 
@@ -119,11 +156,23 @@
 | LINK-01 | Phase 3 | Complete |
 | LINK-02 | Phase 3 | Complete |
 
+| EDIT-01 | — | Pending |
+| EDIT-02 | — | Pending |
+| SEL-01 | — | Pending |
+| SEL-02 | — | Pending |
+| INSP-01 | — | Pending |
+| MOD-01 | — | Pending |
+| MOD-02 | — | Pending |
+| MOD-03 | — | Pending |
+| MOD-04 | — | Pending |
+| EXP-01 | — | Pending |
+
 **Coverage:**
-- v1 requirements: 30 total
-- Mapped to phases: 30
-- Unmapped: 0
+- v1 requirements: 30 total (all complete)
+- v1.1 requirements: 10 total
+- Mapped to phases: 0
+- Unmapped: 10 ⚠️
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-03-30 after roadmap creation*
+*Last updated: 2026-04-01 after milestone v1.1 requirements definition*
