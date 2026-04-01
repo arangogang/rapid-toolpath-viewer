@@ -31,13 +31,12 @@ Declared values (must be multiples of 4):
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| xs | 2px | QFormLayout vertical spacing (existing pattern in PropertyPanel) |
 | sm | 4px | Inner group content margins, compact element spacing |
 | md | 8px | Default content margins in PropertyPanel scroll area |
 | lg | 12px | Section separation between groups inside PropertyPanel |
 | xl | 16px | Outer margins for major layout containers |
 
-Exceptions: PyQt6 QFormLayout uses 2px vertical spacing to keep PropertyPanel compact (existing pattern from Phase 4). All spacing values match existing PropertyPanel `setContentsMargins(4, 2, 4, 2)` and `setSpacing(4)` conventions.
+Exceptions: QFormLayout `setContentsMargins(4, 2, 4, 2)` uses `2px` vertical margin as a hard-coded implementation detail inherited from Phase 4. This is not a reusable design token; it exists solely to keep PropertyPanel rows compact within the fixed-width side panel. New layout code in Phase 5 must not introduce additional non-multiple-of-4 values.
 
 ---
 
@@ -45,12 +44,12 @@ Exceptions: PyQt6 QFormLayout uses 2px vertical spacing to keep PropertyPanel co
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
-| Body | system default (~9pt / 12px) | Regular (400) | Qt default |
-| Label | 9pt | Bold (700) | Qt default |
-| Input | system default (~9pt / 12px) | Regular (400) | Qt default |
+| Body | system default (~9pt / 12px) | Regular (400) | 1.2 (Qt default for QLabel/QLineEdit) |
+| Label | 9pt | Bold (700) | 1.2 (Qt default for QLabel) |
+| Input | system default (~9pt / 12px) | Regular (400) | 1.2 (Qt default for QLineEdit) |
 | Code | 10pt Consolas | Regular (400) | 1.2 (tab stop 4) |
 
-Source: Existing codebase. PropertyPanel header uses QFont pointSize=9, bold=True. Code panel uses Consolas 10pt. All other widgets use Qt system default. Phase 5 continues these exact values.
+Source: Existing codebase. PropertyPanel header uses QFont pointSize=9, bold=True. Code panel uses Consolas 10pt. All other widgets use Qt system default. Qt applies a 1.2 line-height ratio by default for QLabel and QLineEdit. Phase 5 continues these exact values.
 
 ---
 
@@ -69,6 +68,12 @@ Source: Existing codebase. PropertyPanel header uses QFont pointSize=9, bold=Tru
 Accent reserved for: Code panel line highlight background, input field focus ring (Qt default), "Apply Offset" button when offset values are non-zero.
 
 Note: This application uses Qt system palette for widget chrome. The 60/30/10 split applies within the 3D viewport and code panel (dark theme areas). PropertyPanel and toolbar use OS-native widget styling. No custom stylesheet is applied to PropertyPanel widgets.
+
+---
+
+## Focal Point
+
+Primary visual anchor: the "Apply Offset" button (most-used action in the Offset group) and the red "Delete" button (highest-risk action, pinned to the bottom of PropertyPanel). The red background on Delete provides immediate visual contrast against the neutral OS-styled panel, ensuring the destructive action is both discoverable and distinguishable from safe actions.
 
 ---
 
@@ -122,6 +127,7 @@ Note: This application uses Qt system palette for widget chrome. The 60/30/10 sp
   - Keyboard shortcut: Del key (D-06)
   - Styling: `setStyleSheet("QPushButton { background-color: #CC3333; color: white; padding: 4px 8px; }")` (D-06)
   - Behavior: opens delete confirmation dialog (D-07)
+  - Label justification: "Delete" without a noun is acceptable because the button is only enabled when points are selected, and the header label above always shows "{N} point(s) selected", providing the noun context. The confirmation dialog additionally reads "Delete {N} point(s)?" for explicit clarity before the action executes.
 
 #### Layout order (top to bottom within PropertyPanel scroll area):
 1. Header label
@@ -219,7 +225,7 @@ Note: This application uses Qt system palette for widget chrome. The 60/30/10 sp
 |---------|------|
 | Primary CTA | "Apply Offset" |
 | Secondary CTA | "Insert After" |
-| Destructive CTA | "Delete" (red button) |
+| Destructive CTA | "Delete" (red button; noun omitted because enabled-only-when-selected state plus header "{N} point(s) selected" makes the object contextually unambiguous) |
 | Empty state heading | "No selection" |
 | Empty state body | All property fields display "--" (existing pattern) |
 | Error state | Not applicable -- validation via QDoubleValidator prevents invalid offset input. Invalid speed/zone strings are accepted by design (D-02: free-text, no validation). |
