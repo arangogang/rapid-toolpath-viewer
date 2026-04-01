@@ -119,8 +119,12 @@ Plans:
   3. User can delete a waypoint and choose whether to reconnect the path (maintain continuity) or break it (insert laser-off gap), with the 3D view updating accordingly
   4. User can continuously add new waypoints by specifying offset from the last point, with properties copied from the source point
   5. Every modification can be undone with Ctrl+Z and redone with Ctrl+Y, restoring both the data and the 3D view
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md -- QUndoCommand subclasses + EditModel mutation methods + tests
+- [ ] 05-02-PLAN.md -- PropertyPanel editable conversion (offset inputs, speed/zone/laser, delete/insert buttons)
+- [ ] 05-03-PLAN.md -- MainWindow wiring + geometry rebuild + visual verification
 
 ### Phase 6: Export
 **Goal**: User can save the modified toolpath as a new .mod file that preserves the original file's formatting, comments, and non-move RAPID code
@@ -142,5 +146,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 2. 3D Viewer and Camera | v1.0 | 4/4 | Complete | 2026-03-30 |
 | 3. Playback, Code Panel, and Linking | v1.0 | 5/5 | Complete | 2026-03-30 |
 | 4. Edit Infrastructure, Selection, and Inspection | v1.1 | 1/3 | In Progress|  |
-| 5. Modification Operations | v1.1 | 0/0 | Not started | - |
+| 5. Modification Operations | v1.1 | 0/3 | Not started | - |
 | 6. Export | v1.1 | 0/0 | Not started | - |
