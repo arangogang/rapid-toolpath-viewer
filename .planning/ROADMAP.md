@@ -106,7 +106,7 @@ Plans:
 
 Plans:
 - [ ] 04-01-PLAN.md -- SelectionState + EditModel/EditPoint data models with TDD tests
-- [ ] 04-02-PLAN.md -- PropertyPanel read-only inspection widget with tests
+- [x] 04-02-PLAN.md -- PropertyPanel read-only inspection widget with tests
 - [ ] 04-03-PLAN.md -- GL widget multi-select rendering + MainWindow integration + visual verification
 
 ### Phase 5: Modification Operations
@@ -141,6 +141,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Parser and File Loading | v1.0 | 3/3 | Complete | 2026-03-30 |
 | 2. 3D Viewer and Camera | v1.0 | 4/4 | Complete | 2026-03-30 |
 | 3. Playback, Code Panel, and Linking | v1.0 | 5/5 | Complete | 2026-03-30 |
-| 4. Edit Infrastructure, Selection, and Inspection | v1.1 | 0/3 | In progress | - |
+| 4. Edit Infrastructure, Selection, and Inspection | v1.1 | 1/3 | In Progress|  |
 | 5. Modification Operations | v1.1 | 0/0 | Not started | - |
 | 6. Export | v1.1 | 0/0 | Not started | - |
