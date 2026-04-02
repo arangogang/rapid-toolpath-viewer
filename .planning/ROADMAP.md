@@ -123,7 +123,7 @@ Plans:
 
 Plans:
 - [ ] 05-01-PLAN.md -- QUndoCommand subclasses + EditModel mutation methods + tests
-- [ ] 05-02-PLAN.md -- PropertyPanel editable conversion (offset inputs, speed/zone/laser, delete/insert buttons)
+- [x] 05-02-PLAN.md -- PropertyPanel editable conversion (offset inputs, speed/zone/laser, delete/insert buttons)
 - [ ] 05-03-PLAN.md -- MainWindow wiring + geometry rebuild + visual verification
 
 ### Phase 6: Export

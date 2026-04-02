@@ -76,10 +76,10 @@ Requirements for milestone v1.1: Toolpath Editing. Each maps to roadmap phases.
 
 ### Modification
 
-- [ ] **MOD-01**: 좌표 오프셋 수정 — X,Y,Z 델타값 입력으로 선택된 워크포인트 이동
-- [ ] **MOD-02**: 속성 수정 — 속도, zone값, 레이저 on/off 변경
-- [ ] **MOD-03**: 웨이포인트 삭제 — 삭제 후 다음 패스 연결(기존 경로 유지) 또는 끊기(레이저 OFF 이동) 옵션
-- [ ] **MOD-04**: 연속 추가 — 오프셋 입력 후 추가 포인트 계속 생성, 기존 속성 복사
+- [x] **MOD-01**: 좌표 오프셋 수정 — X,Y,Z 델타값 입력으로 선택된 워크포인트 이동
+- [x] **MOD-02**: 속성 수정 — 속도, zone값, 레이저 on/off 변경
+- [x] **MOD-03**: 웨이포인트 삭제 — 삭제 후 다음 패스 연결(기존 경로 유지) 또는 끊기(레이저 OFF 이동) 옵션
+- [x] **MOD-04**: 연속 추가 — 오프셋 입력 후 추가 포인트 계속 생성, 기존 속성 복사
 
 ### Export
 
@@ -160,10 +160,10 @@ Requirements for milestone v1.1: Toolpath Editing. Each maps to roadmap phases.
 | SEL-01 | Phase 4 | Complete |
 | SEL-02 | Phase 4 | Complete |
 | INSP-01 | Phase 4 | Complete |
-| MOD-01 | Phase 5 | Pending |
-| MOD-02 | Phase 5 | Pending |
-| MOD-03 | Phase 5 | Pending |
-| MOD-04 | Phase 5 | Pending |
+| MOD-01 | Phase 5 | Complete |
+| MOD-02 | Phase 5 | Complete |
+| MOD-03 | Phase 5 | Complete |
+| MOD-04 | Phase 5 | Complete |
 | EXP-01 | Phase 6 | Pending |
 
 **Coverage:**
