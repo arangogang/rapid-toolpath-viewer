@@ -399,16 +399,17 @@ class MainWindow(QMainWindow):
 
     def _open_file(self) -> None:
         """Open a native file dialog and load the selected .mod file."""
-        start_dir = self._last_open_dir if os.path.isdir(self._last_open_dir) else ""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open RAPID Module",
-            start_dir,
-            "RAPID Module (*.mod);;All Files (*)",
-        )
-        if file_path:
-            self._last_open_dir = os.path.dirname(os.path.abspath(file_path))
-            self.load_file(file_path)
+        dialog = QFileDialog(self, "Open RAPID Module")
+        dialog.setNameFilter("RAPID Module (*.mod);;All Files (*)")
+        dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        if self._last_open_dir and os.path.isdir(self._last_open_dir):
+            dialog.setDirectory(self._last_open_dir)
+        if dialog.exec():
+            files = dialog.selectedFiles()
+            if files:
+                file_path = files[0]
+                self._last_open_dir = os.path.dirname(os.path.abspath(file_path))
+                self.load_file(file_path)
 
     def load_file(self, file_path: str) -> None:
         """Load and parse a .mod file. Public method also used by tests.

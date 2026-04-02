@@ -17,6 +17,12 @@ class RapidHighlighter(QSyntaxHighlighter):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._rules: list[tuple[QRegularExpression, QTextCharFormat]] = []
+        self._highlight_block_num: int = -1  # 0-indexed
+
+        # Highlight format: amber bold (applied OVER syntax colors on active line)
+        self._highlight_fmt = QTextCharFormat()
+        self._highlight_fmt.setForeground(QColor("#FFD580"))
+        self._highlight_fmt.setFontWeight(QFont.Weight.Bold)
 
         ci = QRegularExpression.PatternOption.CaseInsensitiveOption
 
@@ -49,6 +55,26 @@ class RapidHighlighter(QSyntaxHighlighter):
         comment_fmt.setForeground(QColor("#6A9955"))
         self._rules.append((QRegularExpression(r"!.*$"), comment_fmt))
 
+    def set_highlight_line(self, line_number: int) -> None:
+        """Set the 1-indexed line that should get amber+bold formatting.
+
+        Pass -1 or 0 to clear. Rehighlights only the affected blocks.
+        """
+        old = self._highlight_block_num
+        self._highlight_block_num = line_number - 1  # convert to 0-indexed
+        doc = self.document()
+        if doc is None:
+            return
+        # Rehighlight old and new blocks so formatting updates immediately
+        if old >= 0:
+            block = doc.findBlockByNumber(old)
+            if block.isValid():
+                self.rehighlightBlock(block)
+        if self._highlight_block_num >= 0:
+            block = doc.findBlockByNumber(self._highlight_block_num)
+            if block.isValid():
+                self.rehighlightBlock(block)
+
     def highlightBlock(self, text: str) -> None:
         """Apply highlighting rules to a single block of text."""
         for pattern, fmt in self._rules:
@@ -56,3 +82,8 @@ class RapidHighlighter(QSyntaxHighlighter):
             while it.hasNext():
                 match = it.next()
                 self.setFormat(match.capturedStart(), match.capturedLength(), fmt)
+
+        # Override with amber+bold on the highlighted line (after syntax rules
+        # so it takes precedence over keyword colors)
+        if self.currentBlock().blockNumber() == self._highlight_block_num:
+            self.setFormat(0, len(text), self._highlight_fmt)

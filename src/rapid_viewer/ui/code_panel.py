@@ -169,34 +169,30 @@ class CodePanel(QWidget):
         block = self._editor.document().findBlockByLineNumber(line_number - 1)
         if not block.isValid() or line_number < 1:
             self._editor.setExtraSelections([])
+            if self._highlighter is not None:
+                self._highlighter.set_highlight_line(-1)
             self._detail_label.setText("")
             return
 
-        # Background highlight for the full line width
-        bg_cursor = QTextCursor(block)
-        bg_sel = QTextEdit.ExtraSelection()
-        bg_sel.format.setBackground(QColor("#264F78"))
-        bg_sel.format.setProperty(
+        # Background highlight for the full line width (ExtraSelection)
+        cursor = QTextCursor(block)
+        selection = QTextEdit.ExtraSelection()
+        selection.format.setBackground(QColor("#264F78"))
+        selection.format.setProperty(
             QTextCharFormat.Property.FullWidthSelection, True
         )
-        bg_sel.cursor = bg_cursor
+        selection.cursor = cursor
+        self._editor.setExtraSelections([selection])
 
-        # Foreground highlight: bold + amber text over the line text
-        fg_cursor = QTextCursor(block)
-        fg_cursor.movePosition(
-            QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor
-        )
-        fg_sel = QTextEdit.ExtraSelection()
-        fg_sel.format.setForeground(QColor("#FFD580"))
-        fg_sel.format.setFontWeight(700)  # Bold
-        fg_sel.cursor = fg_cursor
-
-        self._editor.setExtraSelections([bg_sel, fg_sel])
+        # Foreground highlight: amber + bold via syntax highlighter
+        # (ExtraSelection foreground is overridden by QSyntaxHighlighter)
+        if self._highlighter is not None:
+            self._highlighter.set_highlight_line(line_number)
 
         # Scroll to the line — block signals to prevent cursorPositionChanged
         # from re-emitting line_clicked and creating a feedback loop
         self._editor.blockSignals(True)
-        self._editor.setTextCursor(bg_cursor)
+        self._editor.setTextCursor(cursor)
         self._editor.centerCursor()
         self._editor.blockSignals(False)
 

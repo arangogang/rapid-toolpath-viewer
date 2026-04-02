@@ -42,7 +42,7 @@ def test_highlight_line_valid(qtbot):
     panel.set_source(SAMPLE_SOURCE)
     panel.highlight_line(2)
     selections = panel._editor.extraSelections()
-    assert len(selections) == 2  # background + foreground (bold/color)
+    assert len(selections) == 1  # blue background (foreground via highlighter)
     # The background selection cursor should be on block index 1 (0-indexed)
     assert selections[0].cursor.blockNumber() == 1
 
