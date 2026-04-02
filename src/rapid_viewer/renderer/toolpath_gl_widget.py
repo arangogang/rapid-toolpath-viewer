@@ -128,6 +128,11 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._highlight_vbo: int = 0
         self._highlight_index: int = -1
 
+        # Highlight line segments (path leading to current waypoint)
+        self._highlight_line_vao: int = 0
+        self._highlight_line_vbo: int = 0
+        self._highlight_line_count: int = 0
+
         # Selected markers (multi-select)
         self._selected_vao: int = 0
         self._selected_vbo: int = 0
@@ -145,6 +150,10 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._dashed_cumulative: list[int] = []
         # Progress index controls progressive draw (toolbar/play only)
         self._progress_index: int = -1
+
+        # Cached vertex arrays for highlight line extraction
+        self._solid_verts: np.ndarray | None = None
+        self._dashed_verts: np.ndarray | None = None
 
         # Cached waypoint positions for ray-cast picking
         self._waypoint_positions: np.ndarray | None = None
@@ -200,6 +209,11 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._highlight_vao, self._highlight_vbo = self._create_vao_vbo(
             np.empty((0, 6), dtype=np.float32)
         )
+        # Highlight line VAO/VBO (path segment to current waypoint)
+        self._highlight_line_vao, self._highlight_line_vbo = self._create_vao_vbo(
+            np.empty((0, 6), dtype=np.float32)
+        )
+        self._highlight_line_count = 0
 
         # Selected markers VAO/VBO (multi-select)
         self._selected_vao, self._selected_vbo = self._create_vao_vbo(
@@ -235,6 +249,7 @@ class ToolpathGLWidget(QOpenGLWidget):
 
         self._draw_solid(mvp)
         self._draw_dashed(mvp, w, h)
+        self._draw_highlight_line(mvp)
         self._draw_markers(mvp)
         self._draw_selected(mvp)
         self._draw_highlight(mvp)
@@ -284,6 +299,10 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._solid_cumulative = buffers.solid_cumulative or []
         self._dashed_cumulative = buffers.dashed_cumulative or []
 
+        # Cache vertex arrays for highlight line extraction
+        self._solid_verts = buffers.solid_verts.copy() if len(buffers.solid_verts) else None
+        self._dashed_verts = buffers.dashed_verts.copy() if len(buffers.dashed_verts) else None
+
         # Cache waypoint positions for ray-cast picking
         if self._marker_count > 0:
             self._waypoint_positions = buffers.marker_verts[:, :3].copy()
@@ -293,6 +312,7 @@ class ToolpathGLWidget(QOpenGLWidget):
         # Reset selection state on new scene
         self._selected_count = 0
         self._selected_set = frozenset()
+        self._highlight_line_count = 0
 
         # Start at first waypoint; show all paths on initial load
         self._highlight_index = 0
@@ -331,6 +351,9 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._solid_cumulative = buffers.solid_cumulative or []
         self._dashed_cumulative = buffers.dashed_cumulative or []
 
+        self._solid_verts = buffers.solid_verts.copy() if len(buffers.solid_verts) else None
+        self._dashed_verts = buffers.dashed_verts.copy() if len(buffers.dashed_verts) else None
+
         if self._marker_count > 0:
             self._waypoint_positions = buffers.marker_verts[:, :3].copy()
         else:
@@ -354,6 +377,8 @@ class ToolpathGLWidget(QOpenGLWidget):
         """Highlight a waypoint by index. Pass -1 to clear highlight."""
         if index < 0 or self._waypoint_positions is None or index >= len(self._waypoint_positions):
             self._highlight_index = -1
+            self._highlight_line_count = 0
+            self.update()
             return
 
         self._highlight_index = index
@@ -365,8 +390,43 @@ class ToolpathGLWidget(QOpenGLWidget):
             color = [1.0, 1.0, 1.0]  # white: current only
         vertex = np.array([[pos[0], pos[1], pos[2], *color]], dtype=np.float32)
 
+        # Build highlight line vertices: extract segment for this waypoint
+        highlight_color = [1.0, 0.55, 0.0]  # orange
+        line_parts = []
+
+        # Solid segment for waypoint index
+        if self._solid_verts is not None and self._solid_cumulative:
+            cum = self._solid_cumulative
+            idx = min(index, len(cum) - 1)
+            end = cum[idx] if idx >= 0 else 0
+            start = cum[idx - 1] if idx > 0 else 0
+            if end > start:
+                seg = self._solid_verts[start:end].copy()
+                seg[:, 3:] = highlight_color
+                line_parts.append(seg)
+
+        # Dashed segment for waypoint index
+        if self._dashed_verts is not None and self._dashed_cumulative:
+            cum = self._dashed_cumulative
+            idx = min(index, len(cum) - 1)
+            end = cum[idx] if idx >= 0 else 0
+            start = cum[idx - 1] if idx > 0 else 0
+            if end > start:
+                seg = self._dashed_verts[start:end].copy()
+                seg[:, 3:] = highlight_color
+                line_parts.append(seg)
+
+        if line_parts:
+            highlight_lines = np.concatenate(line_parts, axis=0).astype(np.float32)
+            self._highlight_line_count = len(highlight_lines)
+        else:
+            highlight_lines = np.empty((0, 6), dtype=np.float32)
+            self._highlight_line_count = 0
+
         self.makeCurrent()
         self._upload_vbo(self._highlight_vbo, vertex)
+        if self._highlight_line_count > 0:
+            self._upload_vbo(self._highlight_line_vbo, highlight_lines)
         self.doneCurrent()
         self.update()
 
@@ -498,6 +558,17 @@ class ToolpathGLWidget(QOpenGLWidget):
         )
         glBindVertexArray(self._highlight_vao)
         glDrawArrays(GL_POINTS, 0, 1)
+        glBindVertexArray(0)
+
+    def _draw_highlight_line(self, mvp: np.ndarray) -> None:
+        """Draw highlighted path segment (orange) for the current waypoint."""
+        if self._highlight_line_count == 0 or self._highlight_index < 0:
+            return
+        glUseProgram(self._solid_prog)
+        loc = glGetUniformLocation(self._solid_prog, "u_mvp")
+        glUniformMatrix4fv(loc, 1, GL_FALSE, mvp.flatten())
+        glBindVertexArray(self._highlight_line_vao)
+        glDrawArrays(GL_LINES, 0, self._highlight_line_count)
         glBindVertexArray(0)
 
     def _draw_triads(self, mvp: np.ndarray) -> None:
