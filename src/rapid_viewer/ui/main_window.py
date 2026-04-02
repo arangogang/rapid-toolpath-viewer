@@ -401,6 +401,7 @@ class MainWindow(QMainWindow):
             source, encoding = read_mod_file(path)
             self._current_file_path = path.resolve()
             self._file_encoding = encoding
+            self._last_open_dir = str(path.resolve().parent)
             self._parse_result = parse_module(source)
 
             # Clear selection before loading new data (Pitfall 4)
