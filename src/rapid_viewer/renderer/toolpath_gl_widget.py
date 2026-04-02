@@ -147,6 +147,10 @@ class ToolpathGLWidget(QOpenGLWidget):
         # Cached waypoint positions for ray-cast picking
         self._waypoint_positions: np.ndarray | None = None
 
+        # Physical viewport dimensions (set in resizeGL, used for picking)
+        self._viewport_w: int = 0
+        self._viewport_h: int = 0
+
         # Mouse press position for click-vs-drag detection
         self._press_pos: tuple[float, float] | None = None
 
@@ -220,9 +224,14 @@ class ToolpathGLWidget(QOpenGLWidget):
             self._upload_scene(self._last_parse_result)
 
     def resizeGL(self, w: int, h: int) -> None:
-        """Called on resize. Update viewport and camera aspect."""
+        """Called on resize. Update viewport and camera aspect.
+
+        Note: w, h are physical pixels (scaled by devicePixelRatio) in Qt6.
+        """
         glViewport(0, 0, w, h)
         self._camera.set_aspect(w / max(h, 1))
+        self._viewport_w = w
+        self._viewport_h = h
 
     def paintGL(self) -> None:
         """Called each frame. Draw toolpath, markers, axes indicator, view cube."""
@@ -554,13 +563,22 @@ class ToolpathGLWidget(QOpenGLWidget):
     # ------------------------------------------------------------------
 
     def _try_pick(self, mouse_x: float, mouse_y: float) -> None:
-        """Project all waypoints to screen space and pick the nearest within 20px."""
+        """Project all waypoints to screen space and pick the nearest within 20px.
+
+        Uses physical pixel coordinates (viewport dimensions from resizeGL,
+        mouse coords scaled by devicePixelRatio) to avoid DPI mismatch.
+        """
         if self._waypoint_positions is None or len(self._waypoint_positions) == 0:
             return
 
-        w, h = self.width(), self.height()
-        if w == 0 or h == 0:
+        vp_w, vp_h = self._viewport_w, self._viewport_h
+        if vp_w == 0 or vp_h == 0:
             return
+
+        # Scale mouse coords from logical to physical pixels
+        dpr = self.devicePixelRatio()
+        mx = mouse_x * dpr
+        my = mouse_y * dpr
 
         mvp = self._camera.mvp().astype(np.float64)
         positions = self._waypoint_positions.astype(np.float64)
@@ -576,22 +594,24 @@ class ToolpathGLWidget(QOpenGLWidget):
         if not np.any(valid):
             return
 
-        # NDC -> screen coordinates
+        # NDC -> physical screen coordinates (matching viewport)
         ndc_x = clip[:, 0] / clip[:, 3]
         ndc_y = clip[:, 1] / clip[:, 3]
-        screen_x = (ndc_x + 1.0) * 0.5 * w
-        screen_y = (1.0 - ndc_y) * 0.5 * h  # Y-flip: Qt has Y-down, NDC has Y-up
+        screen_x = (ndc_x + 1.0) * 0.5 * vp_w
+        screen_y = (1.0 - ndc_y) * 0.5 * vp_h  # Y-flip: Qt Y-down, NDC Y-up
 
-        # Distance from mouse position
-        dx = screen_x - mouse_x
-        dy = screen_y - mouse_y
+        # Distance from mouse position (both in physical pixels)
+        dx = screen_x - mx
+        dy = screen_y - my
         dist_sq = dx * dx + dy * dy
 
         # Mask invalid points with large distance
         dist_sq[~valid] = float("inf")
 
         min_idx = int(np.argmin(dist_sq))
-        threshold_sq = 20.0 * 20.0  # 20px threshold
+        # Threshold in physical pixels (20 logical * dpr)
+        threshold = 20.0 * dpr
+        threshold_sq = threshold * threshold
 
         if dist_sq[min_idx] <= threshold_sq:
             self._last_picked_index = min_idx

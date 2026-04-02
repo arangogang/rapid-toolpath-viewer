@@ -63,6 +63,25 @@ class PlaybackState(QObject):
             self._current_index = -1
             self.moves_changed.emit()
 
+    def update_moves(self, moves: list[MoveInstruction]) -> None:
+        """Replace the move list while preserving the current index.
+
+        Clamps the index if the list got shorter (e.g. after delete).
+        Does not emit current_changed unless clamping occurs.
+        Always emits moves_changed().
+        """
+        self._moves = list(moves)
+        if self._moves:
+            if self._current_index >= len(self._moves):
+                self._current_index = len(self._moves) - 1
+                self.moves_changed.emit()
+                self.current_changed.emit(self._current_index)
+            else:
+                self.moves_changed.emit()
+        else:
+            self._current_index = -1
+            self.moves_changed.emit()
+
     def set_index(self, index: int) -> None:
         """Set current index if valid and different from current.
 

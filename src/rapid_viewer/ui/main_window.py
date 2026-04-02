@@ -42,6 +42,7 @@ class MainWindow(QMainWindow):
         self._parse_result = None
         self._current_file_path: Path | None = None
         self._file_encoding: str = "utf-8"
+        self._last_open_dir: str = ""
 
         # Lazy imports (isolate OpenGL from parser-only tests)
         from rapid_viewer.renderer.toolpath_gl_widget import ToolpathGLWidget
@@ -263,8 +264,8 @@ class MainWindow(QMainWindow):
         synthetic_result = replace(self._parse_result, moves=edited_moves)
         if self._gl_ready():
             self._gl_widget.update_scene(synthetic_result)
-        # Refresh playback state moves list (index safety after insert/delete)
-        self._playback_state.set_moves(edited_moves)
+        # Update moves list without resetting current index (preserves scroll position)
+        self._playback_state.update_moves(edited_moves)
         # Refresh property panel for current selection
         self._update_property_panel()
 
@@ -375,10 +376,11 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Open RAPID Module",
-            "",
+            self._last_open_dir,
             "RAPID Module (*.mod);;All Files (*)",
         )
         if file_path:
+            self._last_open_dir = str(Path(file_path).parent)
             self.load_file(file_path)
 
     def load_file(self, file_path: str) -> None:
