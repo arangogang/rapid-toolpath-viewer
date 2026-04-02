@@ -84,6 +84,13 @@ class TestEditPoint:
         assert np.array_equal(point.pos, np.zeros(3))
         assert point.original is move
 
+    def test_from_move_is_inserted_false(self):
+        """EditPoint.from_move creates point with is_inserted=False."""
+        move = _make_move(1)
+        point = EditPoint.from_move(move)
+
+        assert point.is_inserted is False
+
 
 class TestEditModel:
     """Unit tests for EditModel with QUndoStack."""

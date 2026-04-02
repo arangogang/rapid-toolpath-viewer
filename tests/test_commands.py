@@ -336,3 +336,19 @@ class TestInsertCommand:
 
         model.undo_stack.undo()
         assert len(received) == 2
+
+    def test_insert_sets_is_inserted_true(self, qtbot):
+        """InsertPointCommand sets is_inserted=True on the new point."""
+        from rapid_viewer.ui.commands import InsertPointCommand
+
+        model = EditModel()
+        model.load([_make_move(1), _make_move(2)])
+
+        delta = np.array([0.0, 0.0, 0.0])
+        cmd = InsertPointCommand(model, 0, delta)
+        model.undo_stack.push(cmd)
+
+        inserted = model.point_at(1)
+        assert inserted.is_inserted is True
+        # Original points should not be marked as inserted
+        assert model.point_at(0).is_inserted is False
