@@ -9,12 +9,15 @@ Provides the QMainWindow with:
   - Bidirectional linking: 3D click <-> code panel scroll
   - PlaybackState wiring for step-through navigation
   - EditModel + SelectionState for Phase 4 edit infrastructure
+  - Phase 5: PropertyPanel edit signals -> EditModel mutations -> geometry rebuild
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+
+import numpy as np
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
@@ -133,6 +136,17 @@ class MainWindow(QMainWindow):
         # Dirty state -> title bar asterisk
         self._edit_model.dirty_changed.connect(self._on_dirty_changed)
 
+        # Phase 5: PropertyPanel edit signals -> MainWindow handlers
+        self._property_panel.offset_applied.connect(self._on_offset_applied)
+        self._property_panel.speed_changed.connect(self._on_speed_changed)
+        self._property_panel.zone_changed.connect(self._on_zone_changed)
+        self._property_panel.laser_changed.connect(self._on_laser_changed)
+        self._property_panel.delete_requested.connect(self._on_delete_requested)
+        self._property_panel.insert_requested.connect(self._on_insert_requested)
+
+        # EditModel data change -> rebuild geometry
+        self._edit_model.points_changed.connect(self._on_points_changed)
+
     # -- Slots ---------------------------------------------------------------
 
     def _gl_ready(self) -> bool:
@@ -184,6 +198,69 @@ class MainWindow(QMainWindow):
         else:
             self.setWindowTitle(title)
 
+    # -- Phase 5: Edit signal handlers ------------------------------------------
+
+    def _on_offset_applied(self, dx: float, dy: float, dz: float) -> None:
+        """Apply XYZ offset to all selected points (D-12)."""
+        indices = sorted(self._selection_state.selected_indices)
+        if not indices:
+            return
+        delta = np.array([dx, dy, dz], dtype=np.float64)
+        self._edit_model.apply_offset(indices, delta)
+
+    def _on_speed_changed(self, new_speed: str) -> None:
+        """Set speed on all selected points (D-13)."""
+        indices = sorted(self._selection_state.selected_indices)
+        if not indices:
+            return
+        self._edit_model.set_property(indices, "speed", new_speed)
+
+    def _on_zone_changed(self, new_zone: str) -> None:
+        """Set zone on all selected points (D-13)."""
+        indices = sorted(self._selection_state.selected_indices)
+        if not indices:
+            return
+        self._edit_model.set_property(indices, "zone", new_zone)
+
+    def _on_laser_changed(self, laser_on: bool) -> None:
+        """Set laser state on all selected points (D-13)."""
+        indices = sorted(self._selection_state.selected_indices)
+        if not indices:
+            return
+        self._edit_model.set_property(indices, "laser_on", laser_on)
+
+    def _on_delete_requested(self, mode: str) -> None:
+        """Delete all selected points with reconnect/break (D-14)."""
+        indices = sorted(self._selection_state.selected_indices)
+        if not indices:
+            return
+        self._edit_model.delete_points(indices, mode)
+        self._selection_state.clear()
+
+    def _on_insert_requested(self, dx: float, dy: float, dz: float) -> None:
+        """Insert new point after selected point (D-09, D-10, D-15)."""
+        indices = sorted(self._selection_state.selected_indices)
+        if len(indices) != 1:
+            return
+        source_index = indices[0]
+        delta = np.array([dx, dy, dz], dtype=np.float64)
+        new_index = self._edit_model.insert_after(source_index, delta)
+        # Auto-select the new point for chaining (D-10)
+        self._selection_state.select_single(new_index)
+
+    def _on_points_changed(self) -> None:
+        """Rebuild geometry from EditModel and refresh all views."""
+        if self._parse_result is None:
+            return
+        edited_moves = self._edit_model.build_edited_moves()
+        synthetic_result = replace(self._parse_result, moves=edited_moves)
+        if self._gl_ready():
+            self._gl_widget.update_scene(synthetic_result)
+        # Refresh playback state moves list (index safety after insert/delete)
+        self._playback_state.set_moves(edited_moves)
+        # Refresh property panel for current selection
+        self._update_property_panel()
+
     def _on_code_line_clicked(self, line: int) -> None:
         """Find a move matching the clicked source line and select it."""
         for i, move in enumerate(self._playback_state._moves):
@@ -202,6 +279,9 @@ class MainWindow(QMainWindow):
     def _apply_proc_filter(self, proc_name: str) -> None:
         """Filter moves by PROC name and update PlaybackState + GL widget.
 
+        Uses EditModel's edited moves as the base list so that modifications
+        (deleted points, changed positions) are reflected when switching PROCs.
+
         Preserves the current playback position by matching source_line
         after the filter is applied.
         """
@@ -211,9 +291,9 @@ class MainWindow(QMainWindow):
         # Remember current position
         cur_move = self._playback_state.current_move
         cur_source_line = cur_move.source_line if cur_move is not None else -1
-        cur_index = self._playback_state.current_index
 
-        all_moves = self._parse_result.moves
+        # Use edited moves from EditModel as the canonical source
+        all_moves = self._edit_model.build_edited_moves()
 
         if proc_name == "All PROCs":
             filtered_moves = all_moves
