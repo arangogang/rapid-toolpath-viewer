@@ -124,7 +124,7 @@ Plans:
 Plans:
 - [x] 05-01-PLAN.md -- QUndoCommand subclasses + EditModel mutation methods + tests
 - [x] 05-02-PLAN.md -- PropertyPanel editable conversion (offset inputs, speed/zone/laser, delete/insert buttons)
-- [ ] 05-03-PLAN.md -- MainWindow wiring + geometry rebuild + visual verification
+- [x] 05-03-PLAN.md -- MainWindow wiring + geometry rebuild + visual verification
 
 ### Phase 6: Export
 **Goal**: User can save the modified toolpath as a new .mod file that preserves the original file's formatting, comments, and non-move RAPID code
@@ -134,6 +134,11 @@ Plans:
   1. User can use File > Save As (Ctrl+Shift+S) to export the modified .mod file to a new location (never overwrites the original)
   2. The exported .mod file preserves all original comments, IF/WHILE logic, custom PROC structure, and formatting -- only edited values differ from the original
   3. The exported .mod file can be reloaded in the viewer and shows the modifications correctly
+**Plans**: 2 plans
+
+Plans:
+- [ ] 06-01-PLAN.md -- ModWriter source text patching engine + is_inserted flag + unit tests
+- [ ] 06-02-PLAN.md -- MainWindow Save As wiring + encoding tracking + visual verification
 
 ## Progress
 
@@ -147,4 +152,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Playback, Code Panel, and Linking | v1.0 | 5/5 | Complete | 2026-03-30 |
 | 4. Edit Infrastructure, Selection, and Inspection | v1.1 | 1/3 | In Progress|  |
 | 5. Modification Operations | v1.1 | 2/3 | In Progress|  |
-| 6. Export | v1.1 | 0/0 | Not started | - |
+| 6. Export | v1.1 | 0/2 | Not started | - |
