@@ -8,7 +8,7 @@ Implements a two-pass architecture:
 
 Entry points:
   parse_module(source)  -- parse string content, return ParseResult
-  read_mod_file(path)   -- read file with UTF-8 / latin-1 fallback, return string
+  read_mod_file(path)   -- read file with UTF-8 / latin-1 fallback, return (string, encoding)
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ from rapid_viewer.parser.tokens import (
 # ---------------------------------------------------------------------------
 
 
-def read_mod_file(path: Path) -> str:
+def read_mod_file(path: Path) -> tuple[str, str]:
     """Read a RAPID .mod file with encoding fallback.
 
     Tries UTF-8 first. If that fails, falls back to latin-1, which is a
@@ -61,12 +61,13 @@ def read_mod_file(path: Path) -> str:
         path: Path to the .mod file.
 
     Returns:
-        File content as a string.
+        Tuple of (file_content, encoding_used). encoding_used is "utf-8"
+        or "latin-1".
     """
     try:
-        return path.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8"), "utf-8"
     except UnicodeDecodeError:
-        return path.read_text(encoding="latin-1")
+        return path.read_text(encoding="latin-1"), "latin-1"
 
 
 # ---------------------------------------------------------------------------

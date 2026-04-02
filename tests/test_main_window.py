@@ -1,4 +1,4 @@
-"""Tests for MainWindow file loading, layout, and signal wiring.
+"""Tests for MainWindow file loading, layout, signal wiring, and Save As export.
 
 Requirements covered:
   FILE-01 -- File dialog with .mod filter (manual-only; verified at checkpoint)
@@ -6,9 +6,11 @@ Requirements covered:
   LINK-01 -- Bidirectional 3D-to-code linking (layout/wiring)
   LINK-02 -- Code-to-3D linking (layout/wiring)
   PARS-08 -- PROC selector filtering
+  EXP-01  -- Save As export with overwrite protection
 """
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -107,3 +109,53 @@ def test_load_file_populates_proc_combo(qtbot):
     assert items[0] == "All PROCs"
     assert "main" in items
     assert "path2" in items
+
+
+def test_save_as_prevents_overwrite(qtbot):
+    """EXP-01: Save As prevents overwriting the original file."""
+    from rapid_viewer.ui.main_window import MainWindow
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    fixture_path = str(FIXTURES_DIR / "simple.mod")
+    window.load_file(fixture_path)
+
+    # Mock dialog to return the same path as the loaded file
+    original_path = str(window._current_file_path)
+    with (
+        patch(
+            "rapid_viewer.ui.main_window.QFileDialog.getSaveFileName",
+            return_value=(original_path, ""),
+        ),
+        patch(
+            "rapid_viewer.ui.main_window.QMessageBox.warning",
+        ) as mock_warning,
+    ):
+        window._save_as()
+        mock_warning.assert_called_once()
+        assert "Cannot overwrite" in mock_warning.call_args[0][2]
+
+
+def test_save_as_exports_file(qtbot, tmp_path):
+    """EXP-01: Save As exports a .mod file to the chosen path."""
+    from rapid_viewer.ui.main_window import MainWindow
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    fixture_path = str(FIXTURES_DIR / "simple.mod")
+    window.load_file(fixture_path)
+
+    save_path = str(tmp_path / "exported.mod")
+    with patch(
+        "rapid_viewer.ui.main_window.QFileDialog.getSaveFileName",
+        return_value=(save_path, ""),
+    ):
+        window._save_as()
+
+    saved = Path(save_path)
+    assert saved.exists()
+    content = saved.read_text(encoding="utf-8")
+    # Should contain the MODULE declaration from the original
+    assert "MODULE" in content

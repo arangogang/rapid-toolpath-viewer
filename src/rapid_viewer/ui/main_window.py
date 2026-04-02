@@ -40,6 +40,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_TITLE)
         self.setMinimumSize(1024, 700)
         self._parse_result = None
+        self._current_file_path: Path | None = None
+        self._file_encoding: str = "utf-8"
 
         # Lazy imports (isolate OpenGL from parser-only tests)
         from rapid_viewer.renderer.toolpath_gl_widget import ToolpathGLWidget
@@ -100,6 +102,11 @@ class MainWindow(QMainWindow):
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self._open_file)
         file_menu.addAction(open_action)
+
+        save_as_action = QAction("Save &As...", self)
+        save_as_action.setShortcut("Ctrl+Shift+S")
+        save_as_action.triggered.connect(self._save_as)
+        file_menu.addAction(save_as_action)
 
         file_menu.addSeparator()
 
@@ -325,6 +332,44 @@ class MainWindow(QMainWindow):
 
     # -- File loading --------------------------------------------------------
 
+    def _save_as(self) -> None:
+        """Export modified .mod file via Save As dialog."""
+        if self._parse_result is None:
+            return
+        # Default filename: originalname_modified.mod
+        default_name = ""
+        if self._current_file_path is not None:
+            default_name = str(self._current_file_path.with_stem(
+                self._current_file_path.stem + "_modified"
+            ))
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save As", default_name,
+            "RAPID Module (*.mod);;All Files (*)",
+        )
+        if not file_path:
+            return
+        save_path = Path(file_path).resolve()
+        # Prevent overwriting the original
+        if self._current_file_path is not None and save_path == self._current_file_path:
+            QMessageBox.warning(
+                self, "Warning",
+                "Cannot overwrite the original file. Choose a different name.",
+            )
+            return
+        try:
+            from rapid_viewer.export.mod_writer import export_mod
+
+            patched = export_mod(
+                source_text=self._parse_result.source_text,
+                points=self._edit_model._points,
+                targets=self._parse_result.targets,
+            )
+            save_path.write_text(patched, encoding=self._file_encoding)
+            # Mark undo stack as clean (removes dirty indicator)
+            self._edit_model.undo_stack.setClean()
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "Export Error", f"Failed to save file:\n{e}")
+
     def _open_file(self) -> None:
         """Open a native file dialog and load the selected .mod file."""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -351,7 +396,9 @@ class MainWindow(QMainWindow):
         try:
             from rapid_viewer.parser.rapid_parser import parse_module, read_mod_file
 
-            source = read_mod_file(path)
+            source, encoding = read_mod_file(path)
+            self._current_file_path = path.resolve()
+            self._file_encoding = encoding
             self._parse_result = parse_module(source)
 
             # Clear selection before loading new data (Pitfall 4)

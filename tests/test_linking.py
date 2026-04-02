@@ -161,7 +161,8 @@ def test_proc_filter_moves(qtbot):
     """PARS-08: Filtering moves by proc_ranges produces correct subset."""
     from rapid_viewer.parser.rapid_parser import parse_module, read_mod_file
 
-    result = parse_module(read_mod_file(FIXTURES_DIR / "multiproc.mod"))
+    source, _enc = read_mod_file(FIXTURES_DIR / "multiproc.mod")
+    result = parse_module(source)
 
     # Filter to "path2" (lines 13-17)
     proc_range = result.proc_ranges["path2"]
@@ -185,7 +186,8 @@ def test_link_after_proc_filter(qtbot):
     """After PROC filter, stepping produces moves within the PROC range."""
     from rapid_viewer.parser.rapid_parser import parse_module, read_mod_file
 
-    result = parse_module(read_mod_file(FIXTURES_DIR / "multiproc.mod"))
+    source, _enc = read_mod_file(FIXTURES_DIR / "multiproc.mod")
+    result = parse_module(source)
 
     # Filter to "path2"
     start_line, end_line = result.proc_ranges["path2"]
