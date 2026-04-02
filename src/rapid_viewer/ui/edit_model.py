@@ -47,6 +47,7 @@ class EditPoint:
     zone: str
     laser_on: bool
     deleted: bool = False  # soft-delete flag for Phase 5
+    is_inserted: bool = False  # True for points created by InsertPointCommand
 
     @classmethod
     def from_move(cls, move: MoveInstruction) -> EditPoint:

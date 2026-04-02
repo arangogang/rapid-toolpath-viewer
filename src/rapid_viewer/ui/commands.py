@@ -167,6 +167,7 @@ class InsertPointCommand(QUndoCommand):
             speed=source.speed,
             zone=source.zone,
             laser_on=source.laser_on,
+            is_inserted=True,
         )
 
     def redo(self) -> None:
