@@ -1,21 +1,25 @@
-"""Tests for PropertyPanel widget (INSP-01).
+"""Tests for PropertyPanel widget (INSP-01, MOD-01..04).
 
 Verifies: selection header, position formatting (3 decimals),
-motion fields, laser ON/OFF display, and clear-to-default behavior.
+motion fields, laser ON/OFF display, clear-to-default behavior,
+editable inputs, signal emissions, guard flag, and button states.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
+from PyQt6.QtGui import QDoubleValidator
+from PyQt6.QtWidgets import QComboBox, QLineEdit
+
 from rapid_viewer.parser.tokens import MoveInstruction, MoveType, RobTarget
 
 
-# Minimal EditPoint mock -- Plan 01 creates the real class in edit_model.py.
-# Mirror the interface contract from the plan.
+# Minimal EditPoint mock -- mirrors interface contract from edit_model.py.
 @dataclass
 class _EditPoint:
     original: MoveInstruction
@@ -86,11 +90,19 @@ class TestPropertyPanelInit:
             panel._y_label,
             panel._z_label,
             panel._type_label,
-            panel._speed_label,
-            panel._zone_label,
-            panel._laser_label,
         ]:
             assert lbl.text() == "--"
+
+    def test_speed_zone_initially_empty(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        assert panel._speed_input.text() == ""
+        assert panel._zone_input.text() == ""
+
+    def test_laser_combo_initially_on(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        assert panel._laser_combo.currentText() == "ON"
 
 
 class TestPropertyPanelUpdateSingle:
@@ -118,22 +130,22 @@ class TestPropertyPanelUpdateSingle:
         pt = _make_edit_point(speed="v500", zone="z50", move_type=MoveType.MOVEJ)
         panel.update_from_point(pt, count=1)
         assert panel._type_label.text() == "MOVEJ"
-        assert panel._speed_label.text() == "v500"
-        assert panel._zone_label.text() == "z50"
+        assert panel._speed_input.text() == "v500"
+        assert panel._zone_input.text() == "z50"
 
     def test_laser_on(self, qtbot):
         panel = PropertyPanel()
         qtbot.addWidget(panel)
         pt = _make_edit_point(laser_on=True)
         panel.update_from_point(pt, count=1)
-        assert panel._laser_label.text() == "ON"
+        assert panel._laser_combo.currentText() == "ON"
 
     def test_laser_off(self, qtbot):
         panel = PropertyPanel()
         qtbot.addWidget(panel)
         pt = _make_edit_point(laser_on=False)
         panel.update_from_point(pt, count=1)
-        assert panel._laser_label.text() == "OFF"
+        assert panel._laser_combo.currentText() == "OFF"
 
 
 class TestPropertyPanelUpdateMulti:
@@ -169,8 +181,150 @@ class TestPropertyPanelClear:
             panel._y_label,
             panel._z_label,
             panel._type_label,
-            panel._speed_label,
-            panel._zone_label,
-            panel._laser_label,
         ]:
             assert lbl.text() == "--"
+        assert panel._speed_input.text() == ""
+        assert panel._zone_input.text() == ""
+
+
+class TestPropertyPanelEditable:
+    """Tests for editable widget behavior."""
+
+    def test_offset_fields_exist(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        assert isinstance(panel._dx_input, QLineEdit)
+        assert isinstance(panel._dy_input, QLineEdit)
+        assert isinstance(panel._dz_input, QLineEdit)
+        assert isinstance(panel._dx_input.validator(), QDoubleValidator)
+
+    def test_apply_offset_emits_signal(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        pt = _make_edit_point()
+        panel.update_from_point(pt, count=1)
+        panel._dx_input.setText("10.0")
+        signals = []
+        panel.offset_applied.connect(lambda dx, dy, dz: signals.append((dx, dy, dz)))
+        panel._apply_offset_btn.click()
+        assert len(signals) == 1
+        assert signals[0] == (10.0, 0.0, 0.0)
+
+    def test_speed_change_emits_signal(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        pt = _make_edit_point(speed="v100")
+        panel.update_from_point(pt, count=1)
+        signals = []
+        panel.speed_changed.connect(lambda v: signals.append(v))
+        panel._speed_input.setText("v500")
+        panel._speed_input.editingFinished.emit()
+        assert len(signals) == 1
+        assert signals[0] == "v500"
+
+    def test_zone_change_emits_signal(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        pt = _make_edit_point(zone="z10")
+        panel.update_from_point(pt, count=1)
+        signals = []
+        panel.zone_changed.connect(lambda v: signals.append(v))
+        panel._zone_input.setText("z50")
+        panel._zone_input.editingFinished.emit()
+        assert len(signals) == 1
+        assert signals[0] == "z50"
+
+    def test_laser_combo_emits_signal(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        pt = _make_edit_point(laser_on=True)
+        panel.update_from_point(pt, count=1)
+        signals = []
+        panel.laser_changed.connect(lambda v: signals.append(v))
+        panel._laser_combo.setCurrentIndex(1)  # OFF
+        assert len(signals) == 1
+        assert signals[0] is False
+
+    def test_delete_btn_styled_red(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        assert "#CC3333" in panel._delete_btn.styleSheet()
+
+    def test_insert_btn_disabled_multi_select(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        pt = _make_edit_point()
+        panel.update_from_point(pt, count=2)
+        assert panel._insert_btn.isEnabled() is False
+
+    def test_insert_btn_enabled_single_select(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        pt = _make_edit_point()
+        panel.update_from_point(pt, count=1)
+        assert panel._insert_btn.isEnabled() is True
+
+    def test_delete_btn_enabled_when_selected(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        pt = _make_edit_point()
+        panel.update_from_point(pt, count=2)
+        assert panel._delete_btn.isEnabled() is True
+
+    def test_delete_btn_disabled_when_no_selection(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        assert panel._delete_btn.isEnabled() is False
+
+    def test_no_spurious_signal_on_update(self, qtbot):
+        """Guard flag prevents signal emission during update_from_point."""
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        signals = []
+        panel.speed_changed.connect(lambda v: signals.append(("speed", v)))
+        panel.zone_changed.connect(lambda v: signals.append(("zone", v)))
+        panel.laser_changed.connect(lambda v: signals.append(("laser", v)))
+        # Programmatic update should not trigger signals
+        pt = _make_edit_point(speed="v100", zone="z10", laser_on=False)
+        panel.update_from_point(pt, count=1)
+        assert len(signals) == 0
+
+    def test_insert_emits_signal(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        pt = _make_edit_point()
+        panel.update_from_point(pt, count=1)
+        panel._dx_input.setText("5.0")
+        panel._dy_input.setText("10.0")
+        signals = []
+        panel.insert_requested.connect(lambda dx, dy, dz: signals.append((dx, dy, dz)))
+        panel._insert_btn.click()
+        assert len(signals) == 1
+        assert signals[0] == (5.0, 10.0, 0.0)
+
+    def test_apply_offset_disabled_no_selection(self, qtbot):
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        assert panel._apply_offset_btn.isEnabled() is False
+
+    def test_show_delete_dialog_reconnect(self, qtbot):
+        """_show_delete_dialog returns 'reconnect' when reconnect button clicked."""
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        with patch.object(panel, "_show_delete_dialog", return_value="reconnect"):
+            signals = []
+            panel.delete_requested.connect(lambda v: signals.append(v))
+            panel._selection_count = 1
+            panel._on_delete_clicked()
+            assert signals == ["reconnect"]
+
+    def test_show_delete_dialog_cancel(self, qtbot):
+        """_show_delete_dialog returns None when cancel clicked -- no signal."""
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        with patch.object(panel, "_show_delete_dialog", return_value=None):
+            signals = []
+            panel.delete_requested.connect(lambda v: signals.append(v))
+            panel._selection_count = 1
+            panel._on_delete_clicked()
+            assert signals == []

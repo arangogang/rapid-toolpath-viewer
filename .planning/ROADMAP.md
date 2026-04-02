@@ -123,7 +123,7 @@ Plans:
 
 Plans:
 - [x] 05-01-PLAN.md -- QUndoCommand subclasses + EditModel mutation methods + tests
-- [ ] 05-02-PLAN.md -- PropertyPanel editable conversion (offset inputs, speed/zone/laser, delete/insert buttons)
+- [x] 05-02-PLAN.md -- PropertyPanel editable conversion (offset inputs, speed/zone/laser, delete/insert buttons)
 - [ ] 05-03-PLAN.md -- MainWindow wiring + geometry rebuild + visual verification
 
 ### Phase 6: Export
@@ -146,5 +146,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 2. 3D Viewer and Camera | v1.0 | 4/4 | Complete | 2026-03-30 |
 | 3. Playback, Code Panel, and Linking | v1.0 | 5/5 | Complete | 2026-03-30 |
 | 4. Edit Infrastructure, Selection, and Inspection | v1.1 | 1/3 | In Progress|  |
-| 5. Modification Operations | v1.1 | 1/3 | In Progress|  |
+| 5. Modification Operations | v1.1 | 2/3 | In Progress|  |
 | 6. Export | v1.1 | 0/0 | Not started | - |
