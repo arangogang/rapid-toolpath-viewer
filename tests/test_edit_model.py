@@ -178,3 +178,129 @@ class TestEditModel:
 
         model.load([_make_move(1)])
         assert model.is_dirty is False
+
+
+def _make_move_laser(line: int, laser_on: bool = False) -> MoveInstruction:
+    """Create a MoveInstruction with configurable laser_on."""
+    return MoveInstruction(
+        move_type=MoveType.MOVEL,
+        target=RobTarget(
+            name=f"p{line}",
+            pos=np.array([float(line), 0.0, 0.0], dtype=np.float64),
+            orient=np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64),
+            confdata=(0, 0, 0, 0),
+            extjoint=(9e9, 9e9, 9e9, 9e9, 9e9, 9e9),
+            source_line=line,
+        ),
+        circle_point=None,
+        joint_target=None,
+        speed="v100",
+        zone="fine",
+        tool="tool0",
+        wobj="wobj0",
+        source_line=line,
+        has_cartesian=True,
+        laser_on=laser_on,
+    )
+
+
+class TestEditModelMutations:
+    """Tests for EditModel mutation methods (apply_offset, set_property, etc.)."""
+
+    def test_apply_offset(self, qtbot):
+        """apply_offset shifts point position by delta."""
+        model = EditModel()
+        model.load([_make_move(1), _make_move(2), _make_move(3)])
+
+        model.apply_offset([0], np.array([10.0, 0.0, 0.0]))
+        assert model.point_at(0).pos[0] == 11.0
+
+    def test_apply_offset_undo(self, qtbot):
+        """Undo after apply_offset restores original position."""
+        model = EditModel()
+        model.load([_make_move(1), _make_move(2)])
+
+        model.apply_offset([0], np.array([10.0, 0.0, 0.0]))
+        assert model.point_at(0).pos[0] == 11.0
+
+        model.undo_stack.undo()
+        assert model.point_at(0).pos[0] == 1.0
+
+    def test_set_property_speed(self, qtbot):
+        """set_property changes speed on selected points."""
+        model = EditModel()
+        model.load([_make_move(1)])
+
+        model.set_property([0], "speed", "v500")
+        assert model.point_at(0).speed == "v500"
+
+    def test_delete_points_reconnect(self, qtbot):
+        """delete_points with reconnect sets deleted=True."""
+        model = EditModel()
+        model.load([_make_move(1), _make_move(2), _make_move(3)])
+
+        model.delete_points([1], "reconnect")
+        assert model.point_at(1).deleted is True
+
+    def test_delete_points_break(self, qtbot):
+        """delete_points with break sets deleted=True and laser_on=False on next."""
+        model = EditModel()
+        model.load([
+            _make_move_laser(1, True),
+            _make_move_laser(2, True),
+            _make_move_laser(3, True),
+        ])
+
+        model.delete_points([1], "break")
+        assert model.point_at(1).deleted is True
+        assert model.point_at(2).laser_on is False
+
+    def test_insert_after(self, qtbot):
+        """insert_after creates a new point at source_index + 1."""
+        model = EditModel()
+        model.load([_make_move(1), _make_move(2), _make_move(3)])
+
+        idx = model.insert_after(0, np.array([5.0, 0.0, 0.0]))
+        assert idx == 1
+        assert model.point_count == 4
+        assert model.point_at(1).pos[0] == 6.0  # 1.0 + 5.0
+
+    def test_insert_after_undo(self, qtbot):
+        """Undo after insert_after removes the inserted point."""
+        model = EditModel()
+        model.load([_make_move(1), _make_move(2), _make_move(3)])
+
+        model.insert_after(0, np.array([5.0, 0.0, 0.0]))
+        assert model.point_count == 4
+
+        model.undo_stack.undo()
+        assert model.point_count == 3
+
+    def test_build_edited_moves_skips_deleted(self, qtbot):
+        """build_edited_moves skips deleted points."""
+        model = EditModel()
+        model.load([_make_move(1), _make_move(2), _make_move(3)])
+
+        model.delete_points([1], "reconnect")
+        moves = model.build_edited_moves()
+        assert len(moves) == 2
+
+    def test_build_edited_moves_reflects_offset(self, qtbot):
+        """build_edited_moves reflects modified positions."""
+        model = EditModel()
+        model.load([_make_move(1), _make_move(2)])
+
+        model.apply_offset([0], np.array([10.0, 0.0, 0.0]))
+        moves = model.build_edited_moves()
+        assert moves[0].target.pos[0] == 11.0
+
+    def test_points_changed_signal(self, qtbot):
+        """points_changed signal emitted on mutation."""
+        model = EditModel()
+        model.load([_make_move(1)])
+
+        received = []
+        model.points_changed.connect(lambda: received.append("changed"))
+
+        model.apply_offset([0], np.array([1.0, 0.0, 0.0]))
+        assert len(received) == 1
