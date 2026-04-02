@@ -38,19 +38,18 @@ created: 2026-04-02
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 06-01-01 | 01 | 1 | EXP-01 | unit | `python -m pytest tests/test_mod_writer.py -x -q` | ❌ W0 | ⬜ pending |
-| 06-02-01 | 02 | 2 | EXP-01 | integration | `python -m pytest tests/test_export_roundtrip.py -x -q` | ❌ W0 | ⬜ pending |
+| 06-01-01 | 01 | 1 | EXP-01 | unit | `python -m pytest tests/test_mod_writer.py -x -q` | W0 | pending |
+| 06-02-01 | 02 | 2 | EXP-01 | integration | `python -m pytest tests/test_main_window.py -x -q` | exists | pending |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*Status: pending / green / red / flaky*
 
 ---
 
 ## Wave 0 Requirements
 
 - [ ] `tests/test_mod_writer.py` — stubs for EXP-01 source patching
-- [ ] `tests/test_export_roundtrip.py` — roundtrip test (export then reload)
 
-*Existing infrastructure (pytest, conftest.py with .mod fixtures) covers framework needs.*
+*Existing infrastructure (pytest, conftest.py with .mod fixtures, tests/test_main_window.py) covers framework needs.*
 
 ---
 
