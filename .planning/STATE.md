@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Toolpath Editing
 status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-04-02T04:38:08.845Z"
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-04-02T05:35:50.607Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 6
-  completed_phases: 4
-  total_plans: 18
-  completed_plans: 16
+  completed_phases: 5
+  total_plans: 20
+  completed_plans: 19
   percent: 33
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** .mod 파일을 열면 즉시 3D 툴패스가 렌더링되고, 각 워크포인트를 클릭하면 해당 RAPID 코드 줄로 이동할 수 있어야 한다.
-**Current focus:** Milestone v1.1 -- Toolpath Editing (roadmap created, ready for Phase 4 planning)
+**Current focus:** Phase 06 — export
 
 ## Current Position
 
-Phase: 4 - Edit Infrastructure, Selection, and Inspection
-Plan: 2 of 3 complete
+Phase: 06 (export) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
 Last activity: 2026-04-02
 
@@ -66,6 +66,7 @@ Progress: [###-------] 33%
 | Phase 04 P02 | 87 | 1 tasks | 2 files |
 | Phase 05 P01 | 180 | 2 tasks | 4 files |
 | Phase 05 P02 | 111 | 1 tasks | 2 files |
+| Phase 06 P01 | 266 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,9 @@ Recent decisions affecting current work:
 - [Phase 05]: Lazy import of command classes inside mutation methods to avoid circular dependency
 - [Phase 05]: Commands access model._points directly for insert/remove (list mutation requires direct access)
 - [Phase 05]: _updating bool guard chosen over blockSignals for finer control across multiple PropertyPanel widgets
+- [Phase 06]: Reverse line-order patch application for index validity during insert/delete
+- [Phase 06]: Inserted points always generate MoveL regardless of original move type
+- [Phase 06]: patched_target_lines set prevents duplicate patches on shared named targets
 
 ### Pending Todos
 
@@ -128,6 +132,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-02T04:38:08.838Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-04-02T05:35:50.601Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None

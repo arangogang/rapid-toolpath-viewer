@@ -83,7 +83,7 @@ Requirements for milestone v1.1: Toolpath Editing. Each maps to roadmap phases.
 
 ### Export
 
-- [ ] **EXP-01**: 수정된 .mod 파일 다른 이름으로 저장 — 원본 포맷/주석 보존 (소스 텍스트 패칭 방식)
+- [x] **EXP-01**: 수정된 .mod 파일 다른 이름으로 저장 — 원본 포맷/주석 보존 (소스 텍스트 패칭 방식)
 
 ## v2 Requirements
 
@@ -164,7 +164,7 @@ Requirements for milestone v1.1: Toolpath Editing. Each maps to roadmap phases.
 | MOD-02 | Phase 5 | Complete |
 | MOD-03 | Phase 5 | Complete |
 | MOD-04 | Phase 5 | Complete |
-| EXP-01 | Phase 6 | Pending |
+| EXP-01 | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 30 total (all complete)

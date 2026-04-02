@@ -137,7 +137,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 06-01-PLAN.md -- ModWriter source text patching engine + is_inserted flag + unit tests
+- [x] 06-01-PLAN.md -- ModWriter source text patching engine + is_inserted flag + unit tests
 - [ ] 06-02-PLAN.md -- MainWindow Save As wiring + encoding tracking + visual verification
 
 ## Progress
@@ -152,4 +152,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Playback, Code Panel, and Linking | v1.0 | 5/5 | Complete | 2026-03-30 |
 | 4. Edit Infrastructure, Selection, and Inspection | v1.1 | 1/3 | In Progress|  |
 | 5. Modification Operations | v1.1 | 2/3 | In Progress|  |
-| 6. Export | v1.1 | 0/2 | Not started | - |
+| 6. Export | v1.1 | 1/2 | In Progress|  |
