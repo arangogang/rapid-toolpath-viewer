@@ -569,7 +569,7 @@ class ToolpathGLWidget(QOpenGLWidget):
         n = len(positions)
         homogeneous = np.ones((n, 4), dtype=np.float64)
         homogeneous[:, :3] = positions
-        clip = (mvp @ homogeneous.T).T  # shape (n, 4)
+        clip = homogeneous @ mvp  # row-vector convention: point @ MVP
 
         # Filter out points behind camera (clip_w <= 0)
         valid = clip[:, 3] > 1e-6

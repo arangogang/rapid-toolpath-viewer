@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -62,15 +63,20 @@ class PropertyPanel(QWidget):
         self._current_zone: str = ""
         self._current_laser_on: bool = True
 
+        # Base font for consistent sizing across the panel
+        base_font = QFont()
+        base_font.setPointSize(10)
+
         # Header: selection count
         self._header = QLabel("No selection")
         header_font = QFont()
-        header_font.setPointSize(9)
+        header_font.setPointSize(11)
         header_font.setBold(True)
         self._header.setFont(header_font)
 
         # Position group (read-only per D-01)
         pos_group = QGroupBox("Position")
+        pos_group.setFont(base_font)
         pos_layout = QFormLayout()
         self._x_label = QLabel("--")
         self._y_label = QLabel("--")
@@ -82,6 +88,7 @@ class PropertyPanel(QWidget):
 
         # Offset group (NEW)
         offset_group = QGroupBox("Offset")
+        offset_group.setFont(base_font)
         offset_layout = QFormLayout()
         self._dx_input = QLineEdit()
         self._dy_input = QLineEdit()
@@ -103,6 +110,7 @@ class PropertyPanel(QWidget):
 
         # Motion group
         motion_group = QGroupBox("Motion")
+        motion_group.setFont(base_font)
         motion_layout = QFormLayout()
         self._type_label = QLabel("--")
         self._speed_input = QLineEdit()
@@ -116,6 +124,7 @@ class PropertyPanel(QWidget):
 
         # Laser group
         laser_group = QGroupBox("Laser")
+        laser_group.setFont(base_font)
         laser_layout = QFormLayout()
         self._laser_combo = QComboBox()
         self._laser_combo.addItems(["ON", "OFF"])
@@ -125,10 +134,12 @@ class PropertyPanel(QWidget):
 
         # Action buttons
         self._insert_btn = QPushButton("Insert After")
+        self._insert_btn.setFont(base_font)
         self._insert_btn.setEnabled(False)
         self._insert_btn.clicked.connect(self._on_insert_clicked)
 
         self._delete_btn = QPushButton("Delete")
+        self._delete_btn.setFont(base_font)
         self._delete_btn.setStyleSheet(
             "QPushButton { background-color: #CC3333; color: white; padding: 4px 8px; }"
         )
@@ -136,17 +147,29 @@ class PropertyPanel(QWidget):
         self._delete_btn.setEnabled(False)
         self._delete_btn.clicked.connect(self._on_delete_clicked)
 
-        # Main layout (per UI-SPEC order)
+        # Scrollable content container
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(8, 8, 8, 8)
+        content_layout.addWidget(self._header)
+        content_layout.addWidget(pos_group)
+        content_layout.addWidget(offset_group)
+        content_layout.addWidget(motion_group)
+        content_layout.addWidget(laser_group)
+        content_layout.addStretch()
+        content_layout.addWidget(self._insert_btn)
+        content_layout.addWidget(self._delete_btn)
+
+        # Scroll area wrapping the content
+        scroll_area = QScrollArea()
+        scroll_area.setWidget(content_widget)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+
+        # Main layout just holds the scroll area
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.addWidget(self._header)
-        layout.addWidget(pos_group)
-        layout.addWidget(offset_group)
-        layout.addWidget(motion_group)
-        layout.addWidget(laser_group)
-        layout.addStretch()
-        layout.addWidget(self._insert_btn)
-        layout.addWidget(self._delete_btn)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(scroll_area)
 
         # Initial disabled state for inputs
         self._set_inputs_enabled(False)
