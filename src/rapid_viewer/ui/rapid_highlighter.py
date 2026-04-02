@@ -19,10 +19,10 @@ class RapidHighlighter(QSyntaxHighlighter):
         self._rules: list[tuple[QRegularExpression, QTextCharFormat]] = []
         self._highlight_block_num: int = -1  # 0-indexed
 
-        # Highlight format: amber bold (applied OVER syntax colors on active line)
+        # Highlight format: bright orange + extra bold (applied OVER syntax colors)
         self._highlight_fmt = QTextCharFormat()
-        self._highlight_fmt.setForeground(QColor("#FFD580"))
-        self._highlight_fmt.setFontWeight(QFont.Weight.Bold)
+        self._highlight_fmt.setForeground(QColor("#FF8C00"))
+        self._highlight_fmt.setFontWeight(QFont.Weight.ExtraBold)
 
         ci = QRegularExpression.PatternOption.CaseInsensitiveOption
 

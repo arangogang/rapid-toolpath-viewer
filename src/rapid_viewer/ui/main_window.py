@@ -20,7 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -43,8 +43,9 @@ class MainWindow(QMainWindow):
         self._parse_result = None
         self._current_file_path: Path | None = None
         self._file_encoding: str = "utf-8"
-        self._last_open_dir: str = ""
-        self._last_save_dir: str = ""
+        self._settings = QSettings("ABB", "RAPIDToolpathViewer")
+        self._last_open_dir: str = self._settings.value("last_open_dir", "", str)
+        self._last_save_dir: str = self._settings.value("last_save_dir", "", str)
         self._is_user_selection: bool = False  # True during pick/code-click
 
         # Lazy imports (isolate OpenGL from parser-only tests)
@@ -374,8 +375,9 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
         save_path = Path(file_path).resolve()
-        # Remember the save directory for next time
+        # Remember the save directory for next time (persist across sessions)
         self._last_save_dir = str(save_path.parent)
+        self._settings.setValue("last_save_dir", self._last_save_dir)
         # Prevent overwriting the original
         if self._current_file_path is not None and save_path == self._current_file_path:
             QMessageBox.warning(
@@ -409,6 +411,7 @@ class MainWindow(QMainWindow):
             if files:
                 file_path = files[0]
                 self._last_open_dir = os.path.dirname(os.path.abspath(file_path))
+                self._settings.setValue("last_open_dir", self._last_open_dir)
                 self.load_file(file_path)
 
     def load_file(self, file_path: str) -> None:
@@ -430,6 +433,7 @@ class MainWindow(QMainWindow):
             self._current_file_path = path.resolve()
             self._file_encoding = encoding
             self._last_open_dir = os.path.dirname(os.path.abspath(file_path))
+            self._settings.setValue("last_open_dir", self._last_open_dir)
             self._parse_result = parse_module(source)
 
             # Clear selection before loading new data (Pitfall 4)
