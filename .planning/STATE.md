@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Toolpath Editing
 status: executing
-stopped_at: Phase 5 UI-SPEC approved
-last_updated: "2026-04-01T13:22:32.649Z"
-last_activity: 2026-04-01 -- Plan 01 complete (EditModel + SelectionState)
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-04-02T04:34:34.855Z"
+last_activity: 2026-04-02
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 15
-  completed_plans: 15
+  total_plans: 18
+  completed_plans: 16
   percent: 33
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-01)
 ## Current Position
 
 Phase: 4 - Edit Infrastructure, Selection, and Inspection
-Plan: 1 of 3 complete
-Status: Executing
-Last activity: 2026-04-01 -- Plan 01 complete (EditModel + SelectionState)
+Plan: 2 of 3 complete
+Status: Ready to execute
+Last activity: 2026-04-02
 
 Progress: [###-------] 33%
 
@@ -64,6 +64,7 @@ Progress: [###-------] 33%
 
 *Updated after each plan completion*
 | Phase 04 P02 | 87 | 1 tasks | 2 files |
+| Phase 05 P01 | 180 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,8 @@ Recent decisions affecting current work:
 - [Phase 04 P01]: EditPoint.from_move for MoveAbsJ (target=None) defaults pos to np.zeros(3)
 - [Phase 04 P01]: extend_to delegates to toggle (Ctrl+click behavior per D-02)
 - [Phase 04 P02]: Duck-typed point parameter in PropertyPanel to avoid circular dependency during parallel development
+- [Phase 05]: Lazy import of command classes inside mutation methods to avoid circular dependency
+- [Phase 05]: Commands access model._points directly for insert/remove (list mutation requires direct access)
 
 ### Pending Todos
 
@@ -123,6 +126,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-01T13:22:32.643Z
-Stopped at: Phase 5 UI-SPEC approved
-Resume file: .planning/phases/05-modification-operations/05-UI-SPEC.md
+Last session: 2026-04-02T04:34:34.846Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None
