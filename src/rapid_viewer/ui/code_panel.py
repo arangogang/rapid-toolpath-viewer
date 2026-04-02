@@ -172,18 +172,33 @@ class CodePanel(QWidget):
             self._detail_label.setText("")
             return
 
-        cursor = QTextCursor(block)
-        selection = QTextEdit.ExtraSelection()
-        selection.format.setBackground(QColor("#264F78"))
-        selection.format.setProperty(
+        # Background highlight for the full line width
+        bg_cursor = QTextCursor(block)
+        bg_sel = QTextEdit.ExtraSelection()
+        bg_sel.format.setBackground(QColor("#264F78"))
+        bg_sel.format.setProperty(
             QTextCharFormat.Property.FullWidthSelection, True
         )
-        selection.cursor = cursor
-        self._editor.setExtraSelections([selection])
+        bg_sel.cursor = bg_cursor
 
-        # Scroll to the line
-        self._editor.setTextCursor(cursor)
+        # Foreground highlight: bold + amber text over the line text
+        fg_cursor = QTextCursor(block)
+        fg_cursor.movePosition(
+            QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor
+        )
+        fg_sel = QTextEdit.ExtraSelection()
+        fg_sel.format.setForeground(QColor("#FFD580"))
+        fg_sel.format.setFontWeight(700)  # Bold
+        fg_sel.cursor = fg_cursor
+
+        self._editor.setExtraSelections([bg_sel, fg_sel])
+
+        # Scroll to the line — block signals to prevent cursorPositionChanged
+        # from re-emitting line_clicked and creating a feedback loop
+        self._editor.blockSignals(True)
+        self._editor.setTextCursor(bg_cursor)
         self._editor.centerCursor()
+        self._editor.blockSignals(False)
 
         # Update detail label with full line content
         if 0 < line_number <= len(self._source_lines):

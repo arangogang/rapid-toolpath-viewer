@@ -14,6 +14,7 @@ Provides the QMainWindow with:
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -43,6 +44,8 @@ class MainWindow(QMainWindow):
         self._current_file_path: Path | None = None
         self._file_encoding: str = "utf-8"
         self._last_open_dir: str = ""
+        self._last_save_dir: str = ""
+        self._is_user_selection: bool = False  # True during pick/code-click
 
         # Lazy imports (isolate OpenGL from parser-only tests)
         from rapid_viewer.renderer.toolpath_gl_widget import ToolpathGLWidget
@@ -172,12 +175,17 @@ class MainWindow(QMainWindow):
             self._selection_state.toggle(index)
         else:
             self._selection_state.select_single(index)
+        self._is_user_selection = True
         self._playback_state.set_index(index)
+        self._is_user_selection = False
 
     def _on_waypoint_changed(self, index: int) -> None:
         """Update GL highlight, code panel, and property panel."""
         if self._gl_ready():
             self._gl_widget.set_highlight_index(index)
+            # Only toolbar/playback changes advance the progressive draw
+            if not self._is_user_selection:
+                self._gl_widget.set_progress_index(index)
         move = self._playback_state.current_move
         if move is not None:
             self._code_panel.highlight_line(move.source_line)
@@ -257,15 +265,24 @@ class MainWindow(QMainWindow):
         self._selection_state.select_single(new_index)
 
     def _on_points_changed(self) -> None:
-        """Rebuild geometry from EditModel and refresh all views."""
+        """Rebuild geometry from EditModel and refresh all views.
+
+        Uses ``refresh_geometry`` instead of ``update_scene`` so that the
+        camera position, highlight index, and selection set are preserved
+        after edit operations.
+        """
         if self._parse_result is None:
             return
         edited_moves = self._edit_model.build_edited_moves()
         synthetic_result = replace(self._parse_result, moves=edited_moves)
         if self._gl_ready():
-            self._gl_widget.update_scene(synthetic_result)
+            self._gl_widget.refresh_geometry(synthetic_result)
         # Update moves list without resetting current index (preserves scroll position)
         self._playback_state.update_moves(edited_moves)
+        # Restore highlight at current playback position after geometry rebuild
+        cur_idx = self._playback_state.current_index
+        if self._gl_ready() and cur_idx >= 0:
+            self._gl_widget.set_highlight_index(cur_idx)
         # Refresh property panel for current selection
         self._update_property_panel()
 
@@ -274,7 +291,9 @@ class MainWindow(QMainWindow):
         for i, move in enumerate(self._playback_state._moves):
             if move.source_line == line:
                 self._selection_state.select_single(i)
+                self._is_user_selection = True
                 self._playback_state.set_index(i)
+                self._is_user_selection = False
                 return
 
     def _on_proc_changed(self, proc_name: str) -> None:
@@ -337,12 +356,17 @@ class MainWindow(QMainWindow):
         """Export modified .mod file via Save As dialog."""
         if self._parse_result is None:
             return
-        # Default filename: originalname_modified.mod
-        default_name = ""
+        # Default filename: originalname_modified.mod in the last-used save directory
         if self._current_file_path is not None:
-            default_name = str(self._current_file_path.with_stem(
-                self._current_file_path.stem + "_modified"
-            ))
+            default_stem = self._current_file_path.stem + "_modified.mod"
+        else:
+            default_stem = "untitled_modified.mod"
+        # Use last save directory, falling back to last open directory
+        save_dir = self._last_save_dir or self._last_open_dir or ""
+        if save_dir:
+            default_name = str(Path(save_dir) / default_stem)
+        else:
+            default_name = default_stem
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Save As", default_name,
             "RAPID Module (*.mod);;All Files (*)",
@@ -350,6 +374,8 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
         save_path = Path(file_path).resolve()
+        # Remember the save directory for next time
+        self._last_save_dir = str(save_path.parent)
         # Prevent overwriting the original
         if self._current_file_path is not None and save_path == self._current_file_path:
             QMessageBox.warning(
@@ -373,14 +399,15 @@ class MainWindow(QMainWindow):
 
     def _open_file(self) -> None:
         """Open a native file dialog and load the selected .mod file."""
+        start_dir = self._last_open_dir if os.path.isdir(self._last_open_dir) else ""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Open RAPID Module",
-            self._last_open_dir,
+            start_dir,
             "RAPID Module (*.mod);;All Files (*)",
         )
         if file_path:
-            self._last_open_dir = str(Path(file_path).parent)
+            self._last_open_dir = os.path.dirname(os.path.abspath(file_path))
             self.load_file(file_path)
 
     def load_file(self, file_path: str) -> None:
@@ -401,7 +428,7 @@ class MainWindow(QMainWindow):
             source, encoding = read_mod_file(path)
             self._current_file_path = path.resolve()
             self._file_encoding = encoding
-            self._last_open_dir = str(path.resolve().parent)
+            self._last_open_dir = os.path.dirname(os.path.abspath(file_path))
             self._parse_result = parse_module(source)
 
             # Clear selection before loading new data (Pitfall 4)

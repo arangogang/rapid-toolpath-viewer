@@ -143,6 +143,8 @@ class ToolpathGLWidget(QOpenGLWidget):
         # Progressive draw: cumulative vertex counts per waypoint
         self._solid_cumulative: list[int] = []
         self._dashed_cumulative: list[int] = []
+        # Progress index controls progressive draw (toolbar/play only)
+        self._progress_index: int = -1
 
         # Cached waypoint positions for ray-cast picking
         self._waypoint_positions: np.ndarray | None = None
@@ -211,6 +213,7 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._marker_count = 0
         self._triad_count = 0
         self._highlight_index = -1
+        self._progress_index = -1
         self._solid_cumulative = []
         self._dashed_cumulative = []
         self._waypoint_positions = None
@@ -291,8 +294,9 @@ class ToolpathGLWidget(QOpenGLWidget):
         self._selected_count = 0
         self._selected_set = frozenset()
 
-        # Start at first waypoint for progressive drawing
+        # Start at first waypoint; show all paths on initial load
         self._highlight_index = 0
+        self._progress_index = max(0, self._marker_count - 1)
 
         # Auto-fit camera to scene bounding sphere
         all_pts = buffers.marker_verts[:, :3] if self._marker_count > 0 else None
@@ -300,6 +304,51 @@ class ToolpathGLWidget(QOpenGLWidget):
             center = all_pts.mean(axis=0)
             radius = float(np.max(np.linalg.norm(all_pts - center, axis=1)))
             self._camera.reset(center, max(radius, 1.0))
+
+    def refresh_geometry(self, parse_result: ParseResult) -> None:
+        """Re-upload geometry WITHOUT resetting camera, highlight, or selection.
+
+        Use this after edit operations to rebuild VBOs while preserving the
+        current view state.  Unlike ``update_scene``, this does NOT reset the
+        camera, highlight index, or selection set.
+        """
+        self._last_parse_result = parse_result
+        ctx = self.context()
+        if ctx is None or not ctx.isValid():
+            return
+        self.makeCurrent()
+
+        buffers = build_geometry(parse_result)
+        self._upload_vbo(self._solid_vbo, buffers.solid_verts)
+        self._solid_count = len(buffers.solid_verts)
+        self._upload_vbo(self._dashed_vbo, buffers.dashed_verts)
+        self._dashed_count = len(buffers.dashed_verts)
+        self._upload_vbo(self._marker_vbo, buffers.marker_verts)
+        self._marker_count = len(buffers.marker_verts)
+        self._upload_vbo(self._triad_vbo, buffers.triad_verts)
+        self._triad_count = len(buffers.triad_verts)
+
+        self._solid_cumulative = buffers.solid_cumulative or []
+        self._dashed_cumulative = buffers.dashed_cumulative or []
+
+        if self._marker_count > 0:
+            self._waypoint_positions = buffers.marker_verts[:, :3].copy()
+        else:
+            self._waypoint_positions = None
+
+        self.doneCurrent()
+        self.update()
+
+    def set_progress_index(self, index: int) -> None:
+        """Set the progressive draw position (controls how much path is visible).
+
+        Only call from toolbar/playback controls. Selection/editing should NOT
+        call this — they use set_highlight_index instead.
+        """
+        if self._waypoint_positions is None:
+            return
+        self._progress_index = max(0, min(index, len(self._waypoint_positions) - 1))
+        self.update()
 
     def set_highlight_index(self, index: int) -> None:
         """Highlight a waypoint by index. Pass -1 to clear highlight."""
@@ -355,10 +404,10 @@ class ToolpathGLWidget(QOpenGLWidget):
     def _draw_solid(self, mvp: np.ndarray) -> None:
         if self._solid_count == 0:
             return
-        # Progressive: only draw up to current waypoint
+        # Progressive: draw up to progress position (toolbar-controlled)
         count = self._solid_count
-        if self._highlight_index >= 0 and self._solid_cumulative:
-            idx = min(self._highlight_index, len(self._solid_cumulative) - 1)
+        if self._progress_index >= 0 and self._solid_cumulative:
+            idx = min(self._progress_index, len(self._solid_cumulative) - 1)
             count = self._solid_cumulative[idx]
         if count == 0:
             return
@@ -372,10 +421,10 @@ class ToolpathGLWidget(QOpenGLWidget):
     def _draw_dashed(self, mvp: np.ndarray, w: int, h: int) -> None:
         if self._dashed_count == 0:
             return
-        # Progressive: only draw up to current waypoint
+        # Progressive: draw up to progress position (toolbar-controlled)
         count = self._dashed_count
-        if self._highlight_index >= 0 and self._dashed_cumulative:
-            idx = min(self._highlight_index, len(self._dashed_cumulative) - 1)
+        if self._progress_index >= 0 and self._dashed_cumulative:
+            idx = min(self._progress_index, len(self._dashed_cumulative) - 1)
             count = self._dashed_cumulative[idx]
         if count == 0:
             return
@@ -401,10 +450,10 @@ class ToolpathGLWidget(QOpenGLWidget):
     def _draw_markers(self, mvp: np.ndarray) -> None:
         if self._marker_count == 0:
             return
-        # Progressive: only draw markers up to current waypoint
+        # Progressive: draw markers up to progress position (toolbar-controlled)
         count = self._marker_count
-        if self._highlight_index >= 0:
-            count = min(self._highlight_index + 1, self._marker_count)
+        if self._progress_index >= 0:
+            count = min(self._progress_index + 1, self._marker_count)
         if count == 0:
             return
         glUseProgram(self._marker_prog)
@@ -554,7 +603,12 @@ class ToolpathGLWidget(QOpenGLWidget):
     # ------------------------------------------------------------------
 
     def _try_pick(self, mouse_x: float, mouse_y: float) -> None:
-        """Project all waypoints to screen space and pick the nearest within 20px."""
+        """Project all waypoints to screen space and pick the nearest.
+
+        First checks marker proximity (20 px).  If no marker hit, falls back
+        to line-segment proximity (15 px) and picks the nearest endpoint of
+        the closest segment.
+        """
         if self._waypoint_positions is None or len(self._waypoint_positions) == 0:
             return
 
@@ -582,7 +636,7 @@ class ToolpathGLWidget(QOpenGLWidget):
         screen_x = (ndc_x + 1.0) * 0.5 * w
         screen_y = (1.0 - ndc_y) * 0.5 * h  # Y-flip: Qt Y-down, NDC Y-up
 
-        # Distance from mouse position
+        # Distance from mouse position to marker points
         dx = screen_x - mouse_x
         dy = screen_y - mouse_y
         dist_sq = dx * dx + dy * dy
@@ -591,10 +645,57 @@ class ToolpathGLWidget(QOpenGLWidget):
         dist_sq[~valid] = float("inf")
 
         min_idx = int(np.argmin(dist_sq))
-        threshold_sq = 20.0 * 20.0  # 20 logical pixel threshold
+        marker_threshold_sq = 20.0 * 20.0  # 20 logical pixel threshold
 
-        if dist_sq[min_idx] <= threshold_sq:
+        if dist_sq[min_idx] <= marker_threshold_sq:
             self._last_picked_index = min_idx
+            return
+
+        # -- Fallback: line-segment proximity check --
+        # Test consecutive waypoint pairs as screen-space line segments.
+        if n < 2:
+            return
+
+        seg_threshold_sq = 15.0 * 15.0
+        mouse_pt = np.array([mouse_x, mouse_y], dtype=np.float64)
+
+        # Build arrays for vectorized point-to-segment distance
+        # Segments: (i, i+1) for i in 0..n-2, both endpoints must be valid
+        seg_valid = valid[:-1] & valid[1:]
+        if not np.any(seg_valid):
+            return
+
+        ax = screen_x[:-1]
+        ay = screen_y[:-1]
+        bx = screen_x[1:]
+        by = screen_y[1:]
+
+        # Vector AB and AM
+        abx = bx - ax
+        aby = by - ay
+        amx = mouse_pt[0] - ax
+        amy = mouse_pt[1] - ay
+
+        # Parameter t = dot(AM, AB) / dot(AB, AB), clamped to [0, 1]
+        ab_dot_ab = abx * abx + aby * aby
+        # Avoid division by zero for degenerate segments
+        ab_dot_ab_safe = np.where(ab_dot_ab < 1e-12, 1.0, ab_dot_ab)
+        t = np.clip((amx * abx + amy * aby) / ab_dot_ab_safe, 0.0, 1.0)
+
+        # Closest point on segment
+        cx = ax + t * abx
+        cy = ay + t * aby
+        seg_dist_sq = (mouse_pt[0] - cx) ** 2 + (mouse_pt[1] - cy) ** 2
+
+        # Mask invalid segments
+        seg_dist_sq[~seg_valid] = float("inf")
+
+        best_seg = int(np.argmin(seg_dist_sq))
+        if seg_dist_sq[best_seg] <= seg_threshold_sq:
+            # Pick the endpoint of the segment closer to the mouse
+            d_start = dist_sq[best_seg]
+            d_end = dist_sq[best_seg + 1]
+            self._last_picked_index = best_seg if d_start <= d_end else best_seg + 1
 
     # ------------------------------------------------------------------
     # Internal helpers
