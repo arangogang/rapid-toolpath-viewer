@@ -73,6 +73,7 @@ class EditModel(QObject):
 
     model_reset = pyqtSignal()
     dirty_changed = pyqtSignal(bool)
+    points_changed = pyqtSignal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
