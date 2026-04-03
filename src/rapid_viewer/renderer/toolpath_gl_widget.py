@@ -353,9 +353,25 @@ class ToolpathGLWidget(QOpenGLWidget):
 
         Defers VBO upload to the next paintGL() call to avoid manual
         makeCurrent/doneCurrent which can prevent repaints on some drivers.
+        CPU-side cached arrays (waypoint positions, vertex data, cumulative
+        counts) are updated eagerly so that set_highlight_index() and
+        set_selected_indices() read correct positions before paintGL runs.
         """
         self._last_parse_result = parse_result
-        self._pending_buffers = build_geometry(parse_result)
+        buffers = build_geometry(parse_result)
+        self._pending_buffers = buffers
+
+        # Eagerly update CPU-side caches so highlight/selection use new positions
+        self._solid_cumulative = buffers.solid_cumulative or []
+        self._dashed_cumulative = buffers.dashed_cumulative or []
+        self._solid_verts = buffers.solid_verts.copy() if len(buffers.solid_verts) else None
+        self._dashed_verts = buffers.dashed_verts.copy() if len(buffers.dashed_verts) else None
+        self._marker_count = len(buffers.marker_verts)
+        if self._marker_count > 0:
+            self._waypoint_positions = buffers.marker_verts[:, :3].copy()
+        else:
+            self._waypoint_positions = None
+
         self.update()
 
     def _apply_pending_buffers(self, buffers: GeometryBuffers) -> None:
