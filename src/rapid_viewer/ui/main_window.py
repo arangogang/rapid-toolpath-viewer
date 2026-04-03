@@ -394,6 +394,9 @@ class MainWindow(QMainWindow):
                 targets=self._parse_result.targets,
             )
             save_path.write_text(patched, encoding=self._file_encoding)
+            # Update current file to the saved path (standard Save As behavior)
+            self._current_file_path = save_path
+            self.setWindowTitle(f"{save_path.name} - {APP_TITLE}")
             # Mark undo stack as clean (removes dirty indicator)
             self._edit_model.undo_stack.setClean()
         except Exception as e:  # noqa: BLE001

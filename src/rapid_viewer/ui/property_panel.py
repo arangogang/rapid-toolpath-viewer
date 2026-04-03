@@ -234,13 +234,19 @@ class PropertyPanel(QWidget):
     # -- Private slots --
 
     def _on_apply_offset(self) -> None:
-        """Read offset fields and emit offset_applied signal."""
+        """Read offset fields, emit offset_applied signal, and clear inputs."""
         if self._selection_count == 0:
             return
         dx = self._parse_float(self._dx_input.text())
         dy = self._parse_float(self._dy_input.text())
         dz = self._parse_float(self._dz_input.text())
+        if dx == 0.0 and dy == 0.0 and dz == 0.0:
+            return
         self.offset_applied.emit(dx, dy, dz)
+        # Clear inputs after applying to prevent accidental re-application
+        self._dx_input.clear()
+        self._dy_input.clear()
+        self._dz_input.clear()
 
     def _on_speed_finished(self) -> None:
         """Emit speed_changed only if value actually differs."""
