@@ -224,6 +224,15 @@ class MainWindow(QMainWindow):
             return
         delta = np.array([dx, dy, dz], dtype=np.float64)
         self._edit_model.apply_offset(indices, delta)
+        # Show feedback in status bar
+        point = self._edit_model.point_at(indices[0])
+        if point is not None:
+            p = point.pos
+            self.statusBar().showMessage(
+                f"Offset ({dx:+.1f}, {dy:+.1f}, {dz:+.1f}) applied to "
+                f"{len(indices)} point(s) → ({p[0]:.1f}, {p[1]:.1f}, {p[2]:.1f})",
+                5000,
+            )
 
     def _on_speed_changed(self, new_speed: str) -> None:
         """Set speed on all selected points (D-13)."""
@@ -399,6 +408,7 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"{save_path.name} - {APP_TITLE}")
             # Mark undo stack as clean (removes dirty indicator)
             self._edit_model.undo_stack.setClean()
+            self.statusBar().showMessage(f"Saved: {save_path.name}", 5000)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "Export Error", f"Failed to save file:\n{e}")
 
