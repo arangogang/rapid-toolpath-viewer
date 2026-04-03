@@ -293,6 +293,19 @@ class MainWindow(QMainWindow):
         cur_idx = self._playback_state.current_index
         if self._gl_ready() and cur_idx >= 0:
             self._gl_widget.set_highlight_index(cur_idx)
+        # Regenerate source text and update code panel to reflect edits
+        from rapid_viewer.export.mod_writer import export_mod
+
+        patched_text = export_mod(
+            source_text=self._parse_result.source_text,
+            points=self._edit_model._points,
+            targets=self._parse_result.targets,
+        )
+        self._code_panel.set_source(patched_text)
+        # Restore code panel highlight at current move
+        cur_move = self._playback_state.current_move
+        if cur_move is not None:
+            self._code_panel.highlight_line(cur_move.source_line)
         # Refresh property panel for current selection
         self._update_property_panel()
 
@@ -406,6 +419,13 @@ class MainWindow(QMainWindow):
             # Update current file to the saved path (standard Save As behavior)
             self._current_file_path = save_path
             self.setWindowTitle(f"{save_path.name} - {APP_TITLE}")
+            # Sync internal source text and code panel with saved content
+            self._parse_result = replace(self._parse_result, source_text=patched)
+            self._code_panel.set_source(patched)
+            # Restore code panel highlight at current move
+            cur_move = self._playback_state.current_move
+            if cur_move is not None:
+                self._code_panel.highlight_line(cur_move.source_line)
             # Mark undo stack as clean (removes dirty indicator)
             self._edit_model.undo_stack.setClean()
             self.statusBar().showMessage(f"Saved: {save_path.name}", 5000)
