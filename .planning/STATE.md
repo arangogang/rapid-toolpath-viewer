@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Toolpath Editing
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-04-02T09:18:44.950Z"
-last_activity: 2026-04-02 -- Phase 06 execution started
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-04-03T04:16:04.659Z"
+last_activity: 2026-04-03
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 20
-  completed_plans: 19
+  completed_plans: 20
   percent: 33
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-01)
 ## Current Position
 
 Phase: 06 (export) — EXECUTING
-Plan: 1 of 2
-Status: Executing Phase 06
-Last activity: 2026-04-02 -- Phase 06 execution started
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-04-03
 
 Progress: [###-------] 33%
 
@@ -67,6 +67,7 @@ Progress: [###-------] 33%
 | Phase 05 P01 | 180 | 2 tasks | 4 files |
 | Phase 05 P02 | 111 | 1 tasks | 2 files |
 | Phase 06 P01 | 266 | 2 tasks | 7 files |
+| Phase 06 P02 | 123 | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,8 @@ Recent decisions affecting current work:
 - [Phase 06]: Reverse line-order patch application for index validity during insert/delete
 - [Phase 06]: Inserted points always generate MoveL regardless of original move type
 - [Phase 06]: patched_target_lines set prevents duplicate patches on shared named targets
+- [Phase 06]: read_mod_file returns tuple (content, encoding) for encoding preservation through load-edit-save cycle
+- [Phase 06]: Save As uses separate last_save_dir persisted via QSettings for cross-session directory memory
 
 ### Pending Todos
 
@@ -132,6 +135,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-02T05:35:50.601Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-04-03T04:16:04.650Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None

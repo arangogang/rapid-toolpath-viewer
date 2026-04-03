@@ -138,7 +138,7 @@ Plans:
 
 Plans:
 - [x] 06-01-PLAN.md -- ModWriter source text patching engine + is_inserted flag + unit tests
-- [ ] 06-02-PLAN.md -- MainWindow Save As wiring + encoding tracking + visual verification
+- [x] 06-02-PLAN.md -- MainWindow Save As wiring + encoding tracking + visual verification
 
 ## Progress
 
