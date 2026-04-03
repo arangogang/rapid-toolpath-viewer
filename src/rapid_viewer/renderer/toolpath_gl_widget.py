@@ -166,6 +166,12 @@ class ToolpathGLWidget(QOpenGLWidget):
 
         # Last loaded scene — used to re-upload geometry after context loss
         self._last_parse_result: ParseResult | None = None
+        # Deferred GPU uploads — applied in paintGL to avoid makeCurrent/doneCurrent
+        # outside the Qt-managed paint cycle, which breaks repaints on some drivers
+        self._pending_buffers: GeometryBuffers | None = None
+        self._pending_highlight: np.ndarray | None = None
+        self._pending_highlight_lines: np.ndarray | None = None
+        self._pending_selected: np.ndarray | None = None
 
     # ------------------------------------------------------------------
     # QOpenGLWidget lifecycle
@@ -243,6 +249,19 @@ class ToolpathGLWidget(QOpenGLWidget):
 
     def paintGL(self) -> None:
         """Called each frame. Draw toolpath, markers, axes indicator, view cube."""
+        # Apply deferred VBO uploads (avoids makeCurrent/doneCurrent outside paint)
+        if self._pending_buffers is not None:
+            self._apply_pending_buffers(self._pending_buffers)
+            self._pending_buffers = None
+        if self._pending_highlight is not None:
+            self._upload_vbo(self._highlight_vbo, self._pending_highlight)
+            self._pending_highlight = None
+        if self._pending_highlight_lines is not None:
+            self._upload_vbo(self._highlight_line_vbo, self._pending_highlight_lines)
+            self._pending_highlight_lines = None
+        if self._pending_selected is not None:
+            self._upload_vbo(self._selected_vbo, self._pending_selected)
+            self._pending_selected = None
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         mvp = self._camera.mvp()
         w, h = self.width(), self.height()
@@ -331,14 +350,16 @@ class ToolpathGLWidget(QOpenGLWidget):
         Use this after edit operations to rebuild VBOs while preserving the
         current view state.  Unlike ``update_scene``, this does NOT reset the
         camera, highlight index, or selection set.
+
+        Defers VBO upload to the next paintGL() call to avoid manual
+        makeCurrent/doneCurrent which can prevent repaints on some drivers.
         """
         self._last_parse_result = parse_result
-        ctx = self.context()
-        if ctx is None or not ctx.isValid():
-            return
-        self.makeCurrent()
+        self._pending_buffers = build_geometry(parse_result)
+        self.update()
 
-        buffers = build_geometry(parse_result)
+    def _apply_pending_buffers(self, buffers: GeometryBuffers) -> None:
+        """Upload deferred geometry buffers to GPU. Called inside paintGL."""
         self._upload_vbo(self._solid_vbo, buffers.solid_verts)
         self._solid_count = len(buffers.solid_verts)
         self._upload_vbo(self._dashed_vbo, buffers.dashed_verts)
@@ -358,9 +379,6 @@ class ToolpathGLWidget(QOpenGLWidget):
             self._waypoint_positions = buffers.marker_verts[:, :3].copy()
         else:
             self._waypoint_positions = None
-
-        self.doneCurrent()
-        self.update()
 
     def set_progress_index(self, index: int) -> None:
         """Set the progressive draw position (controls how much path is visible).
@@ -423,11 +441,8 @@ class ToolpathGLWidget(QOpenGLWidget):
             highlight_lines = np.empty((0, 6), dtype=np.float32)
             self._highlight_line_count = 0
 
-        self.makeCurrent()
-        self._upload_vbo(self._highlight_vbo, vertex)
-        if self._highlight_line_count > 0:
-            self._upload_vbo(self._highlight_line_vbo, highlight_lines)
-        self.doneCurrent()
+        self._pending_highlight = vertex
+        self._pending_highlight_lines = highlight_lines if self._highlight_line_count > 0 else None
         self.update()
 
     def set_selected_indices(self, indices: frozenset[int]) -> None:
@@ -450,11 +465,9 @@ class ToolpathGLWidget(QOpenGLWidget):
         for j, idx in enumerate(valid):
             verts[j, :3] = self._waypoint_positions[idx]
             verts[j, 3:] = [0.0, 1.0, 1.0]  # cyan per UI-SPEC
-        self.makeCurrent()
-        self._upload_vbo(self._selected_vbo, verts)
         self._selected_count = len(valid)
         self._selected_set = frozenset(valid)
-        self.doneCurrent()
+        self._pending_selected = verts
         self.update()
 
     # ------------------------------------------------------------------
