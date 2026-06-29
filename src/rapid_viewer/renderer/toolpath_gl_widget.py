@@ -158,6 +158,19 @@ class ToolpathGLWidget(QOpenGLWidget):
         # Cached waypoint positions for ray-cast picking
         self._waypoint_positions: np.ndarray | None = None
 
+        # Marker-space <-> move-space index mapping (see GeometryBuffers).
+        # The public highlight/progress/selection/pick API speaks MOVE space
+        # (the same index space as PlaybackState); internally everything is
+        # translated to MARKER space. Without this, a MoveAbsJ or an
+        # unresolved-target move shifts every following index.
+        self._marker_move_indices: np.ndarray | None = None
+        self._move_to_marker: dict[int, int] = {}
+
+        # Framebuffer size from resizeGL (device pixels) — used to restore the
+        # main viewport after the corner axes indicator draws (HiDPI-correct).
+        self._fb_w: int = 1
+        self._fb_h: int = 1
+
         # Mouse press position for click-vs-drag detection
         self._press_pos: tuple[float, float] | None = None
 
@@ -186,7 +199,7 @@ class ToolpathGLWidget(QOpenGLWidget):
         """
         glEnable(GL_DEPTH_TEST)
         glEnable(GL_PROGRAM_POINT_SIZE)
-        glClearColor(0.1, 0.1, 0.15, 1.0)
+        glClearColor(0.106, 0.106, 0.169, 1.0)  # matches theme WINDOW_BG (#1b1b2b)
 
         self._solid_prog = self._compile(SOLID_VERT, SOLID_FRAG)
         self._dashed_prog = self._compile(DASHED_VERT, DASHED_FRAG)
@@ -243,8 +256,14 @@ class ToolpathGLWidget(QOpenGLWidget):
             self._upload_scene(self._last_parse_result)
 
     def resizeGL(self, w: int, h: int) -> None:
-        """Called on resize. Update viewport and camera aspect."""
+        """Called on resize. Update viewport and camera aspect.
+
+        ``w``/``h`` are the framebuffer size (device pixels). They are cached so
+        the corner axes indicator can restore the full viewport correctly on
+        HiDPI displays, where they differ from the logical widget size.
+        """
         glViewport(0, 0, w, h)
+        self._fb_w, self._fb_h = w, h
         self._camera.set_aspect(w / max(h, 1))
 
     def paintGL(self) -> None:
@@ -300,6 +319,16 @@ class ToolpathGLWidget(QOpenGLWidget):
         self.doneCurrent()
         self.update()
 
+    def fit_view(self) -> None:
+        """Re-frame the camera to the current scene's bounding sphere."""
+        if self._waypoint_positions is None or len(self._waypoint_positions) == 0:
+            return
+        pts = self._waypoint_positions
+        center = pts.mean(axis=0)
+        radius = float(np.max(np.linalg.norm(pts - center, axis=1)))
+        self._camera.reset(center, max(radius, 1.0))
+        self.update()
+
     def _upload_scene(self, parse_result: ParseResult) -> None:
         """Upload geometry to GPU. Caller must ensure context is current."""
         buffers = build_geometry(parse_result)
@@ -327,6 +356,7 @@ class ToolpathGLWidget(QOpenGLWidget):
             self._waypoint_positions = buffers.marker_verts[:, :3].copy()
         else:
             self._waypoint_positions = None
+        self._set_marker_index_map(buffers)
 
         # Reset selection state on new scene
         self._selected_count = 0
@@ -371,6 +401,7 @@ class ToolpathGLWidget(QOpenGLWidget):
             self._waypoint_positions = buffers.marker_verts[:, :3].copy()
         else:
             self._waypoint_positions = None
+        self._set_marker_index_map(buffers)
 
         self.update()
 
@@ -395,30 +426,75 @@ class ToolpathGLWidget(QOpenGLWidget):
             self._waypoint_positions = buffers.marker_verts[:, :3].copy()
         else:
             self._waypoint_positions = None
+        self._set_marker_index_map(buffers)
+
+    # ------------------------------------------------------------------
+    # Index-space translation (move space <-> marker space)
+    # ------------------------------------------------------------------
+
+    def _set_marker_index_map(self, buffers: GeometryBuffers) -> None:
+        """Cache the marker<->move index mapping from freshly built geometry."""
+        indices = buffers.marker_move_indices or []
+        if indices:
+            self._marker_move_indices = np.asarray(indices, dtype=np.int64)
+            self._move_to_marker = {move: marker for marker, move in enumerate(indices)}
+        else:
+            self._marker_move_indices = None
+            self._move_to_marker = {}
+
+    def _to_marker(self, move_index: int) -> int | None:
+        """Translate a move-space index to a marker-space index.
+
+        Returns None if the move has no marker (e.g. MoveAbsJ). When no map is
+        loaded (e.g. unit tests), the index is treated as already marker-space.
+        """
+        if move_index < 0:
+            return None
+        if self._move_to_marker:
+            return self._move_to_marker.get(move_index)
+        return move_index
+
+    def _marker_to_move(self, marker_index: int) -> int:
+        """Translate a marker-space index back to a move-space index."""
+        if (self._marker_move_indices is not None
+                and 0 <= marker_index < len(self._marker_move_indices)):
+            return int(self._marker_move_indices[marker_index])
+        return marker_index
 
     def set_progress_index(self, index: int) -> None:
-        """Set the progressive draw position (controls how much path is visible).
+        """Set the progressive draw position (how much of the path is visible).
 
-        Only call from toolbar/playback controls. Selection/editing should NOT
-        call this — they use set_highlight_index instead.
+        ``index`` is a MOVE-space index (PlaybackState). Only call from
+        toolbar/playback controls; selection/editing use set_highlight_index.
         """
         if self._waypoint_positions is None:
             return
-        self._progress_index = max(0, min(index, len(self._waypoint_positions) - 1))
+        if self._marker_move_indices is not None:
+            # Count markers at or before this move; the last one is the frontier.
+            marker_idx = int(np.searchsorted(
+                self._marker_move_indices, index, side="right")) - 1
+        else:
+            marker_idx = index
+        self._progress_index = max(0, min(marker_idx, len(self._waypoint_positions) - 1))
         self.update()
 
     def set_highlight_index(self, index: int) -> None:
-        """Highlight a waypoint by index. Pass -1 to clear highlight."""
-        if index < 0 or self._waypoint_positions is None or index >= len(self._waypoint_positions):
+        """Highlight a waypoint by MOVE index (PlaybackState space). -1 clears.
+
+        Moves without a 3D marker (e.g. MoveAbsJ) clear the highlight.
+        """
+        marker_idx = self._to_marker(index)
+        if (marker_idx is None or self._waypoint_positions is None
+                or marker_idx < 0 or marker_idx >= len(self._waypoint_positions)):
             self._highlight_index = -1
             self._highlight_line_count = 0
             self.update()
             return
 
-        self._highlight_index = index
-        pos = self._waypoint_positions[index]
+        self._highlight_index = marker_idx
+        pos = self._waypoint_positions[marker_idx]
         # Magenta when current is also selected, white otherwise
-        if index in self._selected_set:
+        if marker_idx in self._selected_set:
             color = [1.0, 0.3, 1.0]  # magenta: current + selected
         else:
             color = [1.0, 1.0, 1.0]  # white: current only
@@ -431,7 +507,7 @@ class ToolpathGLWidget(QOpenGLWidget):
         # Solid segment for waypoint index
         if self._solid_verts is not None and self._solid_cumulative:
             cum = self._solid_cumulative
-            idx = min(index, len(cum) - 1)
+            idx = min(marker_idx, len(cum) - 1)
             end = cum[idx] if idx >= 0 else 0
             start = cum[idx - 1] if idx > 0 else 0
             if end > start:
@@ -442,7 +518,7 @@ class ToolpathGLWidget(QOpenGLWidget):
         # Dashed segment for waypoint index
         if self._dashed_verts is not None and self._dashed_cumulative:
             cum = self._dashed_cumulative
-            idx = min(index, len(cum) - 1)
+            idx = min(marker_idx, len(cum) - 1)
             end = cum[idx] if idx >= 0 else 0
             start = cum[idx - 1] if idx > 0 else 0
             if end > start:
@@ -462,7 +538,11 @@ class ToolpathGLWidget(QOpenGLWidget):
         self.update()
 
     def set_selected_indices(self, indices: frozenset[int]) -> None:
-        """Update selection highlight VBO with cyan-colored markers."""
+        """Update selection highlight VBO with cyan markers.
+
+        ``indices`` are MOVE-space indices; they are translated to marker space
+        (moves without a 3D marker are dropped).
+        """
         if self._waypoint_positions is None or not indices:
             self._selected_count = 0
             self._selected_set = frozenset()
@@ -471,7 +551,11 @@ class ToolpathGLWidget(QOpenGLWidget):
         ctx = self.context()
         if ctx is None or not ctx.isValid():
             return
-        valid = [i for i in indices if 0 <= i < len(self._waypoint_positions)]
+        valid = []
+        for move_index in indices:
+            marker_idx = self._to_marker(move_index)
+            if marker_idx is not None and 0 <= marker_idx < len(self._waypoint_positions):
+                valid.append(marker_idx)
         if not valid:
             self._selected_count = 0
             self._selected_set = frozenset()
@@ -616,9 +700,14 @@ class ToolpathGLWidget(QOpenGLWidget):
         glBindVertexArray(0)
 
     def _draw_axes_indicator(self) -> None:
-        """Draw XYZ axes triad in bottom-left corner (80x80 px)."""
-        w, h = self.width(), self.height()
-        size, padding = 80, 10
+        """Draw XYZ axes triad in the bottom-left corner (~80 logical px).
+
+        Works in framebuffer (device) pixels so both the indicator viewport and
+        the restored full viewport are correct on HiDPI displays.
+        """
+        dpr = self._fb_w / max(self.width(), 1)
+        size = int(80 * dpr)
+        padding = int(10 * dpr)
         glViewport(padding, padding, size, size)
         try:
             # Use the view matrix's 3x3 rotation (same source of truth as
@@ -641,7 +730,7 @@ class ToolpathGLWidget(QOpenGLWidget):
             glDrawArrays(GL_LINES, 0, 6)
             glBindVertexArray(0)
         finally:
-            glViewport(0, 0, w, h)  # always restore full viewport
+            glViewport(0, 0, self._fb_w, self._fb_h)  # restore full framebuffer
 
     # ------------------------------------------------------------------
     # Mouse events (CAM-01, CAM-02, CAM-03)
@@ -687,8 +776,9 @@ class ToolpathGLWidget(QOpenGLWidget):
                         mods = event.modifiers()
                         shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
                         ctrl = bool(mods & Qt.KeyboardModifier.ControlModifier)
+                        # _last_picked_index is marker space; emit move space
                         self.waypoint_picked.emit(
-                            self._last_picked_index, shift, ctrl,
+                            self._marker_to_move(self._last_picked_index), shift, ctrl,
                         )
         self._mouse_mode = None
         self._press_pos = None

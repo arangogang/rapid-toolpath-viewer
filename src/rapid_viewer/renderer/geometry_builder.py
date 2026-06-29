@@ -38,6 +38,13 @@ class GeometryBuffers:
     Progressive draw support:
     solid_cumulative[i]: solid vertex count after waypoint i
     dashed_cumulative[i]: dashed vertex count after waypoint i
+
+    Index mapping:
+    marker_move_indices[i]: index into result.moves of the i-th marker.
+        Markers (and the solid/dashed/triad arrays, which share this order)
+        only cover moves with a Cartesian target, so this maps the renderer's
+        "marker space" back to PlaybackState's "move space". Without it,
+        MoveAbsJ or unresolved-target moves shift every subsequent index.
     """
 
     solid_verts: np.ndarray
@@ -46,6 +53,7 @@ class GeometryBuffers:
     triad_verts: np.ndarray
     solid_cumulative: list[int] | None = None
     dashed_cumulative: list[int] | None = None
+    marker_move_indices: list[int] | None = None
 
 
 def build_geometry(result: ParseResult, arc_segments: int = 32) -> GeometryBuffers:
@@ -59,9 +67,10 @@ def build_geometry(result: ParseResult, arc_segments: int = 32) -> GeometryBuffe
     markers: list[float] = []
     solid_cum: list[int] = []
     dashed_cum: list[int] = []
+    marker_move_indices: list[int] = []
     prev_pos: np.ndarray | None = None
 
-    for move in result.moves:
+    for move_index, move in enumerate(result.moves):
         if not move.has_cartesian or move.target is None:
             continue
 
@@ -93,6 +102,7 @@ def build_geometry(result: ParseResult, arc_segments: int = 32) -> GeometryBuffe
 
         # Marker at every Cartesian waypoint
         markers.extend([*curr_pos, *COLOR_MARKER])
+        marker_move_indices.append(move_index)
         prev_pos = curr_pos
 
     def _to_array(buf: list[float]) -> np.ndarray:
@@ -107,6 +117,7 @@ def build_geometry(result: ParseResult, arc_segments: int = 32) -> GeometryBuffe
         triad_verts=build_triad_vertices(result.moves),
         solid_cumulative=solid_cum,
         dashed_cumulative=dashed_cum,
+        marker_move_indices=marker_move_indices,
     )
 
 
@@ -218,13 +229,15 @@ def build_triad_vertices(
         pyrr_quat = np.array(
             [orient[1], orient[2], orient[3], orient[0]], dtype=np.float64
         )
-        # Normalize to avoid rotation matrix issues
+        # Normalize to avoid rotation matrix issues. A degenerate (zero-length)
+        # quaternion falls back to identity rather than being skipped, so the
+        # triad array stays aligned 1:1 with the marker array.
         qlen = np.linalg.norm(pyrr_quat)
         if qlen < 1e-8:
-            continue
-        pyrr_quat = pyrr_quat / qlen
-
-        rot = pyrr.matrix33.create_from_quaternion(pyrr_quat)
+            rot = np.eye(3, dtype=np.float64)
+        else:
+            pyrr_quat = pyrr_quat / qlen
+            rot = pyrr.matrix33.create_from_quaternion(pyrr_quat)
 
         for axis_vec, color in zip(unit_axes, axis_colors):
             axis_end = pos + rot @ (axis_vec * length)
