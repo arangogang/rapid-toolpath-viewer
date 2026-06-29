@@ -178,3 +178,59 @@ def test_marker_at_every_cartesian_waypoint():
     ]
     buffers = build_geometry(_make_parse_result(moves))
     assert buffers.marker_verts.shape[0] == 3
+
+
+def test_marker_move_indices_skips_moveabsj():
+    """MoveAbsJ (no Cartesian target) must not shift downstream marker indices.
+
+    moves[0] is a MoveAbsJ (has_cartesian=False, target=None) and is skipped.
+    The two MoveL moves live at result.moves indices 1 and 2 and become markers
+    0 and 1, so marker_move_indices maps marker space back to move space as
+    [1, 2] (NOT [0, 1]).
+    """
+    moves = [
+        _make_move(MoveType.MOVEABSJ, pos=None, has_cartesian=False),
+        _make_move(MoveType.MOVEL, (0, 0, 0), name="p1"),
+        _make_move(MoveType.MOVEL, (100, 0, 0), name="p2"),
+    ]
+    buffers = build_geometry(_make_parse_result(moves))
+    assert buffers.marker_move_indices == [1, 2]
+    assert buffers.marker_verts.shape[0] == 2
+
+
+def test_marker_move_indices_skips_unresolved_target():
+    """A Cartesian move with target=None (unresolved ref) is skipped without
+    shifting the mapping.
+
+    moves[1] has has_cartesian=True but target=None, simulating a MoveL whose
+    robtarget reference could not be resolved. build_geometry skips it, so the
+    surviving markers at result.moves indices 0 and 2 map back to [0, 2]
+    (NOT [0, 1]).
+    """
+    moves = [
+        _make_move(MoveType.MOVEL, (0, 0, 0), name="p1"),
+        # Unresolved target reference: Cartesian move but target is None.
+        _make_move(MoveType.MOVEL, pos=None, has_cartesian=True),
+        _make_move(MoveType.MOVEL, (20, 0, 0), name="p3"),
+    ]
+    # Lock the precondition the test depends on: the middle move really is a
+    # has_cartesian move whose target failed to resolve.
+    assert moves[1].target is None
+    assert moves[1].has_cartesian is True
+    buffers = build_geometry(_make_parse_result(moves))
+    assert buffers.marker_move_indices == [0, 2]
+    assert buffers.marker_verts.shape[0] == 2
+
+
+def test_marker_move_indices_all_cartesian():
+    """When every move resolves to a Cartesian target, marker_move_indices is
+    the identity range [0, 1, 2, ...] regardless of move type."""
+    moves = [
+        _make_move(MoveType.MOVEL, (0, 0, 0), name="p1"),
+        _make_move(MoveType.MOVEL, (10, 0, 0), name="p2"),
+        _make_move(MoveType.MOVEL, (20, 0, 0), name="p3"),
+        _make_move(MoveType.MOVEJ, (30, 0, 0), name="p4"),
+    ]
+    buffers = build_geometry(_make_parse_result(moves))
+    assert buffers.marker_move_indices == [0, 1, 2, 3]
+    assert buffers.marker_verts.shape[0] == 4

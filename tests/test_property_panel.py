@@ -331,3 +331,21 @@ class TestPropertyPanelEditable:
             panel._selection_count = 1
             panel._on_delete_clicked()
             assert signals == []
+
+    def test_clear_offset_inputs_empties_fields_without_signals(self, qtbot):
+        """clear_offset_inputs() empties dX/dY/dZ and emits no edit signals."""
+        panel = PropertyPanel()
+        qtbot.addWidget(panel)
+        panel._dx_input.setText("150")
+        panel._dy_input.setText("-20")
+        panel._dz_input.setText("5")
+        signals = []
+        panel.offset_applied.connect(lambda *a: signals.append(("offset", a)))
+        panel.insert_requested.connect(lambda *a: signals.append(("insert", a)))
+
+        panel.clear_offset_inputs()
+
+        assert panel._dx_input.text() == ""
+        assert panel._dy_input.text() == ""
+        assert panel._dz_input.text() == ""
+        assert signals == []  # programmatic clear must not emit edit signals

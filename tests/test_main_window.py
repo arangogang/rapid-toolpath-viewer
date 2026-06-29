@@ -159,3 +159,50 @@ def test_save_as_exports_file(qtbot, tmp_path):
     content = saved.read_text(encoding="utf-8")
     # Should contain the MODULE declaration from the original
     assert "MODULE" in content
+
+
+def test_new_file_clears_offset_inputs(qtbot):
+    """Loading a new file clears stale offset entry (EditModel.model_reset wired).
+
+    Guards both the stale-offset gap and the fact that model_reset is no longer
+    a dead signal.
+    """
+    from rapid_viewer.ui.main_window import MainWindow
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    fixture_path = str(FIXTURES_DIR / "simple.mod")
+    window.load_file(fixture_path)
+
+    # Type offset text but do NOT apply it.
+    window._property_panel._dx_input.setText("150")
+    window._property_panel._dy_input.setText("25")
+
+    # Loading a file again rebuilds the edit model -> model_reset -> clear.
+    window.load_file(fixture_path)
+
+    assert window._property_panel._dx_input.text() == ""
+    assert window._property_panel._dy_input.text() == ""
+    assert window._property_panel._dz_input.text() == ""
+
+
+def test_insert_highlights_inserted_line_not_source(qtbot):
+    """After insert, the code-panel highlight maps to the generated line (one
+    below the source), not the source point's frozen source_line."""
+    from rapid_viewer.ui.main_window import MainWindow
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.load_file(str(FIXTURES_DIR / "simple.mod"))
+
+    # Select the first waypoint and insert a new point after it.
+    window._selection_state.select_single(0)
+    window._on_insert_requested(0.0, 0.0, 50.0)
+
+    idx = window._playback_state.current_index
+    cur = window._playback_state.current_move
+    # The inserted move reuses the source point's frozen source_line, but the
+    # post-export line map resolves it to the actual generated line below it.
+    assert idx in window._display_line_map
+    assert window._display_line_map[idx] == cur.source_line + 1

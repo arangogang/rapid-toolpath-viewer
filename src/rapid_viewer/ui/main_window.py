@@ -50,6 +50,8 @@ class MainWindow(QMainWindow):
         self._last_open_dir: str = self._settings.value("last_open_dir", "", str)
         self._last_save_dir: str = self._settings.value("last_save_dir", "", str)
         self._is_user_selection: bool = False  # True during pick/code-click
+        # full-visible-index -> exported 1-based line; populated by export after edits
+        self._display_line_map: dict[int, int] = {}
 
         # Lazy imports (isolate OpenGL from parser-only tests)
         from rapid_viewer.renderer.toolpath_gl_widget import ToolpathGLWidget
@@ -187,6 +189,9 @@ class MainWindow(QMainWindow):
         # Dirty state -> title bar asterisk
         self._edit_model.dirty_changed.connect(self._on_dirty_changed)
 
+        # New file loaded (model rebuilt from scratch) -> clear stale offset entry
+        self._edit_model.model_reset.connect(self._on_model_reset)
+
         # Phase 5: PropertyPanel edit signals -> MainWindow handlers
         self._property_panel.offset_applied.connect(self._on_offset_applied)
         self._property_panel.speed_changed.connect(self._on_speed_changed)
@@ -226,10 +231,29 @@ class MainWindow(QMainWindow):
             # Only toolbar/playback changes advance the progressive draw
             if not self._is_user_selection:
                 self._gl_widget.set_progress_index(index)
-        move = self._playback_state.current_move
-        if move is not None:
-            self._code_panel.highlight_line(move.source_line)
+        self._highlight_current_line()
         self._update_property_panel()
+
+    def _highlight_current_line(self) -> None:
+        """Highlight the code line for the current move.
+
+        After edits the panel shows export_mod's regenerated text, whose
+        physical line numbers shift once points are inserted; the frozen
+        MoveInstruction.source_line is then stale. Use the post-export line
+        map keyed by the visible (non-deleted) index, which equals the
+        PlaybackState index only when the full unfiltered move list is loaded
+        (playback.total == visible point count). Otherwise — fresh load or an
+        active PROC filter — fall back to the parse-time source_line.
+        """
+        move = self._playback_state.current_move
+        if move is None:
+            return
+        idx = self._playback_state.current_index
+        visible_count = sum(1 for p in self._edit_model._points if not p.deleted)
+        if self._playback_state.total == visible_count and idx in self._display_line_map:
+            self._code_panel.highlight_line(self._display_line_map[idx])
+        else:
+            self._code_panel.highlight_line(move.source_line)
 
     def _on_selection_changed(self, selected: frozenset) -> None:
         """Update GL selection rendering and property panel."""
@@ -253,6 +277,17 @@ class MainWindow(QMainWindow):
             self.setWindowTitle(f"* {title}")
         else:
             self.setWindowTitle(title)
+
+    def _on_model_reset(self) -> None:
+        """React to EditModel.load() replacing the point list on a new file.
+
+        Clears the PropertyPanel's transient dX/dY/dZ offset entry fields so
+        offset text typed against the previous file cannot be applied to the
+        freshly loaded toolpath. Intentionally does NOT touch selection,
+        playback, or GL state -- load_file() already orchestrates those, so
+        duplicating them here would cause redundant work or signal cascades.
+        """
+        self._property_panel.clear_offset_inputs()
 
     # -- Phase 5: Edit signal handlers ------------------------------------------
 
@@ -339,16 +374,16 @@ class MainWindow(QMainWindow):
         # Regenerate source text and update code panel to reflect edits
         from rapid_viewer.export.mod_writer import export_mod
 
+        self._display_line_map = {}
         patched_text = export_mod(
             source_text=self._parse_result.source_text,
             points=self._edit_model._points,
             targets=self._parse_result.targets,
+            line_map=self._display_line_map,
         )
         self._code_panel.set_source(patched_text)
-        # Restore code panel highlight at current move
-        cur_move = self._playback_state.current_move
-        if cur_move is not None:
-            self._code_panel.highlight_line(cur_move.source_line)
+        # Restore code panel highlight at current move (uses post-export line map)
+        self._highlight_current_line()
         # Refresh property panel for current selection
         self._update_property_panel()
 
@@ -453,10 +488,12 @@ class MainWindow(QMainWindow):
         try:
             from rapid_viewer.export.mod_writer import export_mod
 
+            self._display_line_map = {}
             patched = export_mod(
                 source_text=self._parse_result.source_text,
                 points=self._edit_model._points,
                 targets=self._parse_result.targets,
+                line_map=self._display_line_map,
             )
             save_path.write_text(patched, encoding=self._file_encoding)
             # Update current file to the saved path (standard Save As behavior)
@@ -465,10 +502,8 @@ class MainWindow(QMainWindow):
             # Sync internal source text and code panel with saved content
             self._parse_result = replace(self._parse_result, source_text=patched)
             self._code_panel.set_source(patched)
-            # Restore code panel highlight at current move
-            cur_move = self._playback_state.current_move
-            if cur_move is not None:
-                self._code_panel.highlight_line(cur_move.source_line)
+            # Restore code panel highlight at current move (uses post-export line map)
+            self._highlight_current_line()
             # Mark undo stack as clean (removes dirty indicator)
             self._edit_model.undo_stack.setClean()
             self.statusBar().showMessage(f"Saved: {save_path.name}", 5000)
@@ -512,6 +547,8 @@ class MainWindow(QMainWindow):
             self._settings.setValue("last_open_dir", self._last_open_dir)
             self._parse_result = parse_module(source)
 
+            # Reset edit->export line map; source_line is correct for fresh text
+            self._display_line_map = {}
             # Clear selection before loading new data (Pitfall 4)
             self._selection_state.clear()
             # Initialize EditModel with parsed moves (Pitfall 3)

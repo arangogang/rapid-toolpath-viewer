@@ -247,6 +247,19 @@ class PropertyPanel(QWidget):
         finally:
             self._updating = False
 
+    def clear_offset_inputs(self) -> None:
+        """Clear the transient dX/dY/dZ offset entry fields.
+
+        Called when a new file is loaded (via EditModel.model_reset) so offset
+        text typed against the previous file cannot be accidentally applied to
+        the freshly loaded toolpath. Programmatic clear() emits only
+        textChanged (unwired here), so this triggers no offset_applied /
+        insert_requested.
+        """
+        self._dx_input.clear()
+        self._dy_input.clear()
+        self._dz_input.clear()
+
     # -- Private slots --
 
     def _on_apply_offset(self) -> None:

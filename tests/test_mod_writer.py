@@ -292,3 +292,118 @@ class TestReversePatchOrder:
         assert "v2000" in p10_line
         assert "v300" in p20_line
         assert "v400" in p30_line
+
+
+def _insert_point(points, after_index, pos, **kw):
+    """Build an inserted EditPoint after ``after_index`` and splice it in."""
+    inserted = EditPoint(
+        original=points[after_index].original,
+        pos=np.array(pos, dtype=np.float64),
+        speed=kw.get("speed", "v100"),
+        zone=kw.get("zone", "fine"),
+        laser_on=kw.get("laser_on", False),
+        is_inserted=True,
+        deleted=kw.get("deleted", False),
+    )
+    points.insert(after_index + 1, inserted)
+    return inserted
+
+
+class TestLineMap:
+    """line_map out-param: visible-point-index -> exported 1-based line.
+
+    Used by MainWindow to re-highlight a point against the regenerated text,
+    whose physical line numbers shift once points are inserted. Assertions
+    check the *content* of mapped lines, not hardcoded line numbers.
+    """
+
+    def test_line_map_omitted_leaves_output_unchanged(self):
+        from rapid_viewer.export import export_mod
+
+        source = (FIXTURES / "simple.mod").read_text(encoding="utf-8")
+        source_text, points, targets = _make_points(source)
+        points[0].pos = np.array([510.0, 10.0, 410.0], dtype=np.float64)
+
+        without = export_mod(source_text, points, targets)
+        line_map: dict[int, int] = {}
+        with_map = export_mod(source_text, points, targets, line_map=line_map)
+
+        assert with_map == without  # the map pass must not alter the output
+        assert line_map  # but it was populated
+
+    def test_line_map_unmodified_points_to_move_lines(self):
+        from rapid_viewer.export import export_mod
+
+        source = (FIXTURES / "simple.mod").read_text(encoding="utf-8")
+        source_text, points, targets = _make_points(source)
+        line_map: dict[int, int] = {}
+        output = export_mod(source_text, points, targets, line_map=line_map)
+        out_lines = output.splitlines()
+
+        for vis in range(len(points)):
+            assert vis in line_map
+            assert "Move" in out_lines[line_map[vis] - 1]
+
+    def test_line_map_insert_maps_to_generated_line(self):
+        from rapid_viewer.export import export_mod
+
+        source = (FIXTURES / "simple.mod").read_text(encoding="utf-8")
+        source_text, points, targets = _make_points(source)
+        _insert_point(points, 0, (550.0, 50.0, 450.0))  # visible index 1
+
+        line_map: dict[int, int] = {}
+        output = export_mod(source_text, points, targets, line_map=line_map)
+        out_lines = output.splitlines()
+
+        inserted_line = out_lines[line_map[1] - 1]
+        assert "550" in inserted_line and "MoveL" in inserted_line
+        # The source point (vis 0) maps to the line directly above the insert.
+        assert line_map[0] == line_map[1] - 1
+
+    def test_line_map_skips_deleted_never_lands_on_deleted_line(self):
+        from rapid_viewer.export import export_mod
+
+        source = (FIXTURES / "simple.mod").read_text(encoding="utf-8")
+        source_text, points, targets = _make_points(source)
+        points[1].deleted = True
+
+        line_map: dict[int, int] = {}
+        output = export_mod(source_text, points, targets, line_map=line_map)
+        out_lines = output.splitlines()
+
+        for line_no in line_map.values():
+            assert "DELETED" not in out_lines[line_no - 1]
+
+    def test_line_map_insert_then_delete_source(self):
+        """Insert after X, then delete X: the surviving inserted move maps to
+        the generated line, never the commented-out '! [DELETED]' line."""
+        from rapid_viewer.export import export_mod
+
+        source = (FIXTURES / "simple.mod").read_text(encoding="utf-8")
+        source_text, points, targets = _make_points(source)
+        _insert_point(points, 0, (550.0, 50.0, 450.0))
+        points[0].deleted = True  # delete the source point
+
+        line_map: dict[int, int] = {}
+        output = export_mod(source_text, points, targets, line_map=line_map)
+        out_lines = output.splitlines()
+
+        # p10 deleted -> the inserted move is now visible index 0
+        assert 0 in line_map
+        mapped = out_lines[line_map[0] - 1]
+        assert "550" in mapped and "DELETED" not in mapped
+
+    def test_inserted_then_deleted_emits_nothing(self):
+        """Reconciliation fix: a point that is both inserted and deleted
+        produces no generated line, so export/build_edited_moves/map agree."""
+        from rapid_viewer.export import export_mod
+
+        source = (FIXTURES / "simple.mod").read_text(encoding="utf-8")
+        source_text, points, targets = _make_points(source)
+        baseline = export_mod(source_text, points, targets)
+
+        _insert_point(points, 0, (550.0, 50.0, 450.0), deleted=True)
+        output = export_mod(source_text, points, targets)
+
+        assert "550" not in output  # no phantom generated line
+        assert output == baseline  # identical to no insertion at all

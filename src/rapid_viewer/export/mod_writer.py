@@ -216,6 +216,7 @@ def export_mod(
     source_text: str,
     points: list[EditPoint],
     targets: dict[str, RobTarget],
+    line_map: dict[int, int] | None = None,
 ) -> str:
     """Patch source text with EditModel changes and return the result.
 
@@ -230,6 +231,13 @@ def export_mod(
         source_text: Original .mod file source text.
         points: List of EditPoints from EditModel (may include inserted/deleted).
         targets: Dict of named RobTargets from ParseResult.
+        line_map: Optional out-dict. If provided, populated with
+            {visible-point-index -> final 1-based line} where the visible index
+            counts non-deleted points in order (the same ordering as
+            EditModel.build_edited_moves / PlaybackState). Lets callers
+            re-highlight a point against the EXPORTED text, whose line numbers
+            shift once points are inserted. When omitted, the returned string
+            is byte-for-byte identical (the map is an independent pass).
 
     Returns:
         Patched source text string.
@@ -250,6 +258,11 @@ def export_mod(
         source_line_idx = orig.source_line - 1  # convert 1-indexed to 0-indexed
 
         if point.is_inserted:
+            if point.deleted:
+                # Inserted then deleted -> undo the insert entirely (emit
+                # nothing). Keeps export, build_edited_moves, and the line map
+                # in agreement (all skip deleted points).
+                continue
             # Generate a new MoveL line and insert after the source line
             # Detect indentation from the source line
             if 0 <= source_line_idx < len(lines):
@@ -358,6 +371,39 @@ def export_mod(
                     patches.append(
                         (source_line_idx, _PatchAction.REPLACE, patched_line)
                     )
+
+    # Optional: emit {visible-point-index -> final 1-based line} for callers
+    # that re-highlight a point against the EXPORTED text. Independent of the
+    # patch loop (reads `lines`/`points`, mutates nothing), so the returned
+    # string is unchanged when line_map is None. Mirrors only the count-changing
+    # op (INSERT_AFTER adds a line; delete/replace keep the count) and matches
+    # build_edited_moves' visible (non-deleted) ordering.
+    if line_map is not None:
+        n_orig = len(lines)
+        owner_orig: dict[int, int] = {}            # orig 0-based line idx -> visible idx
+        inserts_by_src: dict[int, list[int]] = {}  # orig 0-based line idx -> [visible idx]
+        vis = -1
+        for point in points:
+            if point.deleted:
+                continue  # matches build_edited_moves (skipped from playback)
+            vis += 1
+            src_idx = point.original.source_line - 1
+            if point.is_inserted:
+                inserts_by_src.setdefault(src_idx, []).append(vis)
+            else:
+                owner_orig[src_idx] = vis
+        final_idx = 0
+        for i in range(n_orig):
+            owner = owner_orig.get(i)
+            if owner is not None:
+                line_map[owner] = final_idx + 1
+            final_idx += 1
+            # Inserts land after their source row; export's descending-sort
+            # insertion pushes earlier same-source inserts down, so the final
+            # row order is the reverse of points order.
+            for v in reversed(inserts_by_src.get(i, [])):
+                line_map[v] = final_idx + 1
+                final_idx += 1
 
     # Sort patches by line index DESCENDING so that applying them
     # from bottom to top preserves line indices
