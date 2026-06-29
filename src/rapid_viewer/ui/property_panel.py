@@ -32,6 +32,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from rapid_viewer.ui.theme import (
+    ACCENT_HOVER,
+    DANGER,
+    DANGER_HOVER,
+    PANEL_BG,
+    TEXT_DISABLED,
+)
+
 
 class PropertyPanel(QWidget):
     """Editable inspection panel for selected waypoint properties.
@@ -73,6 +81,7 @@ class PropertyPanel(QWidget):
         header_font.setPointSize(11)
         header_font.setBold(True)
         self._header.setFont(header_font)
+        self._header.setStyleSheet(f"color: {ACCENT_HOVER}; padding: 2px 0 4px 2px;")
 
         # Position group (read-only per D-01)
         pos_group = QGroupBox("Position")
@@ -81,6 +90,10 @@ class PropertyPanel(QWidget):
         self._x_label = QLabel("--")
         self._y_label = QLabel("--")
         self._z_label = QLabel("--")
+        # Monospace coordinate readouts so digits align cleanly
+        mono = QFont("Consolas", 10)
+        for lbl in (self._x_label, self._y_label, self._z_label):
+            lbl.setFont(mono)
         pos_layout.addRow("X:", self._x_label)
         pos_layout.addRow("Y:", self._y_label)
         pos_layout.addRow("Z:", self._z_label)
@@ -141,7 +154,10 @@ class PropertyPanel(QWidget):
         self._delete_btn = QPushButton("Delete")
         self._delete_btn.setFont(base_font)
         self._delete_btn.setStyleSheet(
-            "QPushButton { background-color: #CC3333; color: white; padding: 4px 8px; }"
+            f"QPushButton {{ background-color: {DANGER}; color: white; border: 0;"
+            f" border-radius: 5px; padding: 6px 14px; }}"
+            f"QPushButton:hover {{ background-color: {DANGER_HOVER}; }}"
+            f"QPushButton:disabled {{ background-color: {PANEL_BG}; color: {TEXT_DISABLED}; }}"
         )
         self._delete_btn.setShortcut("Del")
         self._delete_btn.setEnabled(False)

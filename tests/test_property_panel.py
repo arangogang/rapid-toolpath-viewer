@@ -246,9 +246,12 @@ class TestPropertyPanelEditable:
         assert signals[0] is False
 
     def test_delete_btn_styled_red(self, qtbot):
+        from rapid_viewer.ui.theme import DANGER
+
         panel = PropertyPanel()
         qtbot.addWidget(panel)
-        assert "#CC3333" in panel._delete_btn.styleSheet()
+        # Delete is styled with the theme's danger (red) color.
+        assert DANGER in panel._delete_btn.styleSheet()
 
     def test_insert_btn_disabled_multi_select(self, qtbot):
         panel = PropertyPanel()

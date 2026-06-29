@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from rapid_viewer.ui.rapid_highlighter import RapidHighlighter
+from rapid_viewer.ui.theme import ACCENT, PANEL_BG, TEXT
 
 
 class _LineNumberArea(QWidget):
@@ -142,7 +143,8 @@ class CodePanel(QWidget):
         self._detail_label = QLabel()
         self._detail_label.setFont(QFont("Consolas", 9))
         self._detail_label.setStyleSheet(
-            "QLabel { background: #1a1a2e; color: #e0e0e0; padding: 4px 6px; }"
+            f"QLabel {{ background: {PANEL_BG}; color: {TEXT}; padding: 5px 8px;"
+            f" border-top: 2px solid {ACCENT}; }}"
         )
         self._detail_label.setWordWrap(True)
         self._detail_label.setMinimumHeight(20)

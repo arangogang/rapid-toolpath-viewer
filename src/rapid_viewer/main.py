@@ -10,10 +10,12 @@ automatically after the window is shown.
 
 import sys
 
-from PyQt6.QtGui import QSurfaceFormat
+from PyQt6.QtGui import QIcon, QSurfaceFormat
 from PyQt6.QtWidgets import QApplication
 
+from rapid_viewer.app_meta import APP_NAME, ORG_NAME, find_icon
 from rapid_viewer.ui.main_window import MainWindow
+from rapid_viewer.ui.theme import apply_theme
 
 
 def main() -> None:
@@ -27,6 +29,13 @@ def main() -> None:
     QSurfaceFormat.setDefaultFormat(fmt)
 
     app = QApplication(sys.argv)
+    app.setApplicationName(APP_NAME)
+    app.setOrganizationName(ORG_NAME)
+    icon_path = find_icon()
+    if icon_path:
+        app.setWindowIcon(QIcon(icon_path))
+    apply_theme(app)
+
     window = MainWindow()
     window.show()
 

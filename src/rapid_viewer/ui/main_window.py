@@ -20,8 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
-from PyQt6.QtCore import QSettings, Qt
-from PyQt6.QtGui import QAction
+from PyQt6.QtCore import QByteArray, QSettings, Qt
+from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
     QSplitter,
 )
 
-APP_TITLE = "ABB RAPID Toolpath Viewer"
+from rapid_viewer.app_meta import APP_TITLE, ORG_NAME, find_icon
 
 
 class MainWindow(QMainWindow):
@@ -40,10 +40,13 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(APP_TITLE)
         self.setMinimumSize(1024, 700)
+        icon_path = find_icon()
+        if icon_path:
+            self.setWindowIcon(QIcon(icon_path))
         self._parse_result = None
         self._current_file_path: Path | None = None
         self._file_encoding: str = "utf-8"
-        self._settings = QSettings("ABB", "RAPIDToolpathViewer")
+        self._settings = QSettings(ORG_NAME, "RapidViewer")
         self._last_open_dir: str = self._settings.value("last_open_dir", "", str)
         self._last_save_dir: str = self._settings.value("last_save_dir", "", str)
         self._is_user_selection: bool = False  # True during pick/code-click
@@ -65,6 +68,7 @@ class MainWindow(QMainWindow):
         # Menus (must be after EditModel for Edit menu)
         self._setup_menu()
         self._setup_edit_menu()
+        self._setup_view_menu()
 
         # Widgets
         self._gl_widget = ToolpathGLWidget(self)
@@ -98,6 +102,12 @@ class MainWindow(QMainWindow):
         # Wire signals
         self._wire_signals()
 
+        # Restore window geometry from previous session (or maximize on first run)
+        self._restore_geometry()
+
+        # Empty-state hint until a file is loaded
+        self.statusBar().showMessage("Ready — open a .mod file to begin  (Ctrl+O)")
+
     def _setup_menu(self) -> None:
         """Build the menu bar with File menu entries."""
         menu_bar = self.menuBar()
@@ -130,6 +140,35 @@ class MainWindow(QMainWindow):
         redo_action = self._edit_model.undo_stack.createRedoAction(self, "&Redo")
         redo_action.setShortcut("Ctrl+Y")
         edit_menu.addAction(redo_action)
+
+    def _setup_view_menu(self) -> None:
+        """Build the View menu (camera framing)."""
+        menu_bar = self.menuBar()
+        view_menu = menu_bar.addMenu("&View")
+        fit_action = QAction("&Fit to View", self)
+        fit_action.setShortcut("F")
+        fit_action.triggered.connect(self._fit_view)
+        view_menu.addAction(fit_action)
+
+    def _fit_view(self) -> None:
+        """Re-frame the camera to the full toolpath bounding sphere."""
+        if self._gl_ready():
+            self._gl_widget.fit_view()
+
+    # -- Window geometry persistence -----------------------------------------
+
+    def _restore_geometry(self) -> None:
+        """Restore saved window geometry, or maximize on first launch."""
+        geo = self._settings.value("window_geometry")
+        if isinstance(geo, QByteArray) and not geo.isEmpty():
+            self.restoreGeometry(geo)
+        else:
+            self.showMaximized()
+
+    def closeEvent(self, event) -> None:
+        """Persist window geometry on close."""
+        self._settings.setValue("window_geometry", self.saveGeometry())
+        super().closeEvent(event)
 
     def _wire_signals(self) -> None:
         """Connect signals for bidirectional 3D-to-code linking and Phase 4 models."""
@@ -271,8 +310,12 @@ class MainWindow(QMainWindow):
         source_index = indices[0]
         delta = np.array([dx, dy, dz], dtype=np.float64)
         new_index = self._edit_model.insert_after(source_index, delta)
-        # Auto-select the new point for chaining (D-10)
+        # Auto-select the new point for chaining (D-10) and advance playback so
+        # the property panel + 3D highlight follow the inserted point (MOD-04).
         self._selection_state.select_single(new_index)
+        self._is_user_selection = True
+        self._playback_state.set_index(new_index)
+        self._is_user_selection = False
 
     def _on_points_changed(self) -> None:
         """Rebuild geometry from EditModel and refresh all views.
@@ -492,6 +535,13 @@ class MainWindow(QMainWindow):
 
             # Update GL scene (update_scene handles context-not-ready internally)
             self._gl_widget.update_scene(self._parse_result)
+
+            # Replace the empty-state hint with a load summary
+            n_moves = len(self._parse_result.moves)
+            n_procs = len(self._parse_result.procedures)
+            self.statusBar().showMessage(
+                f"Loaded {path.name} — {n_moves} moves, {n_procs} procedure(s)"
+            )
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "Error", f"Failed to load file:\n{e}")
 

@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QSizePolicy,
     QSlider,
+    QStyle,
     QToolBar,
     QWidget,
 )
@@ -43,14 +44,26 @@ class PlaybackToolbar(QToolBar):
         sp.setHorizontalPolicy(QSizePolicy.Policy.Preferred)
         self.setSizePolicy(sp)
 
-        # --- Actions: Step Back, Play/Pause, Step Forward ---
-        self._step_back_action = self.addAction("<<")
+        # --- Actions: Step Back, Play/Pause, Step Forward (media icons) ---
+        style = self.style()
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self._play_icon = style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
+        self._pause_icon = style.standardIcon(QStyle.StandardPixmap.SP_MediaPause)
+
+        self._step_back_action = self.addAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaSkipBackward), "Step back"
+        )
+        self._step_back_action.setToolTip("Step back")
         self._step_back_action.triggered.connect(self._state.step_backward)
 
-        self._play_action = self.addAction("Play")
+        self._play_action = self.addAction(self._play_icon, "Play")
+        self._play_action.setToolTip("Play")
         self._play_action.triggered.connect(self._toggle_play)
 
-        self._step_fwd_action = self.addAction(">>")
+        self._step_fwd_action = self.addAction(
+            style.standardIcon(QStyle.StandardPixmap.SP_MediaSkipForward), "Step forward"
+        )
+        self._step_fwd_action.setToolTip("Step forward")
         self._step_fwd_action.triggered.connect(self._state.step_forward)
 
         self.addSeparator()
@@ -114,11 +127,16 @@ class PlaybackToolbar(QToolBar):
 
     # -- Slots ----------------------------------------------------------------
 
+    def _set_playing_visual(self, playing: bool) -> None:
+        """Update the play/pause action icon + tooltip to match timer state."""
+        self._play_action.setIcon(self._pause_icon if playing else self._play_icon)
+        self._play_action.setToolTip("Pause" if playing else "Play")
+
     def _toggle_play(self) -> None:
         """Toggle auto-play timer on/off."""
         if self._timer.isActive():
             self._timer.stop()
-            self._play_action.setText("Play")
+            self._set_playing_visual(False)
         else:
             # Rewind to start if already at the end
             if (self._state.total > 0
@@ -126,7 +144,7 @@ class PlaybackToolbar(QToolBar):
                 self._state.set_index(0)
             if self._state.total > 0:
                 self._timer.start(self._compute_interval())
-                self._play_action.setText("Pause")
+                self._set_playing_visual(True)
 
     def _on_index_changed(self, index: int) -> None:
         """Update label and scrubber when playback index changes."""
@@ -140,15 +158,13 @@ class PlaybackToolbar(QToolBar):
         # Auto-stop at end
         if index >= self._state.total - 1 and self._timer.isActive():
             self._timer.stop()
-            self._play_action.setText("Play")
+            self._set_playing_visual(False)
 
     def _on_moves_changed(self) -> None:
         """Update scrubber range and label when move list changes."""
         total = self._state.total
         self._scrubber.setRange(0, max(0, total - 1))
-        if total > 0:
-            pass
-        else:
+        if total == 0:
             self._pos_label.setText("0 / 0")
 
     def _on_scrubber_changed(self, value: int) -> None:
