@@ -4,6 +4,9 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 # PyQt6 Qt 플랫폼 플러그인 수집 (windows, styles 등)
 datas = collect_data_files('PyQt6', includes=['Qt6/plugins/**'])
 
+# 앱 아이콘을 번들 루트에 포함 → 런타임 setWindowIcon(app_meta.find_icon())용
+datas += [('rapid_viewer.ico', '.')]
+
 # rapid_viewer 패키지 모든 서브모듈 수집 (parser, ui 등)
 hidden_imports = (
     collect_submodules('rapid_viewer')
